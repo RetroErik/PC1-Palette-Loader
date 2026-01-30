@@ -1,10 +1,10 @@
 ; ============================================================================
 ; PC1PAL.ASM - CGA Palette Override Utility for Olivetti Prodest PC1
 ; Written for NASM - NEC V40 (80186 compatible)
-; By Retro Erik - 2026 using VS Code with Co-Pilot
-; Version 0.1
+; By Retro Erik - 2026 using VS Code with GitHub Copilot
+; Version 0.8
 ; ============================================================================
-; Loads custom RGB palette from config file and writes to V6355D DAC
+; Loads custom RGB palette from text file and writes to V6355D DAC
 ;
 ; In CGA 320x200 4-color mode, pixel values 0-3 map to DAC entries based on
 ; which palette the game uses:
@@ -14,36 +14,34 @@
 ; This utility writes your 4 custom colors to ALL these positions, so your
 ; palette works regardless of which CGA palette or intensity the game uses.
 ;
-; Usage: PC1PAL [palette.pal]
-;        If no file specified, uses PC1PAL.PAL in current directory
-;        If file missing/invalid, uses fallback CGA Mode 4 Palette 1:
-;           Color 0: Black, Color 1: Cyan, Color 2: Magenta, Color 3: White
+; Usage: PC1PAL [palette.txt] [/1] [/2] [/3] [/R] [/?]
 ;
-; Config file formats supported:
+; Switches:
+;   /1        Preset: Arcade Vibrant (action games)
+;   /2        Preset: Sierra Natural (adventure games)
+;   /3        Preset: C64-inspired (retro warm feel)
+;   /R        Reset to default CGA palette
+;   /?        Show help
 ;
-;   BINARY (12 bytes exactly):
-;     4 RGB triples × 3 bytes each = 12 bytes total
-;     Each byte: 0-63 (6-bit value, will be scaled to 3-bit for V6355D)
-;     Order: R0,G0,B0, R1,G1,B1, R2,G2,B2, R3,G3,B3
+; If no file or switch specified, uses PC1PAL.TXT in current directory.
+; If file missing/invalid, uses fallback CGA Mode 4 Palette 1:
+;   Color 0: Black, Color 1: Cyan, Color 2: Magenta, Color 3: White
 ;
-;   TEXT (any size > 12 bytes or contains high ASCII):
-;     One RGB triple per line: "R,G,B" or "R G B" (values 0-63)
-;     Lines starting with ; or # are comments
-;     Blank lines are ignored
-;     Example:
-;       ; My custom palette
-;       0,0,0       ; Black
-;       0,42,63     ; Sky Blue
-;       63,21,0     ; Orange
-;       63,63,63    ; White
+; Text file format:
+;   One RGB triple per line: "R,G,B" or "R G B" (values 0-63)
+;   Lines starting with ; or # are comments
+;   Blank lines are ignored
+;   Example:
+;     ; My custom palette
+;     0,0,0       ; Black
+;     0,42,63     ; Sky Blue  
+;     63,21,0     ; Orange
+;     63,63,63    ; White
 ;
 ; V6355D Palette Format:
 ;   Byte 1: Red intensity (bits 0-2, values 0-7)
 ;   Byte 2: Green (bits 4-6) + Blue (bits 0-2)
 ;   Note: 6-bit input (0-63) is scaled to 3-bit (0-7) by dividing by 8
-;
-; Written for NASM (-f bin) - NEC V40 / 8088 compatible
-; By Retro Erik - 2026
 ; ============================================================================
 
 [BITS 16]
@@ -83,6 +81,68 @@ main:
     mov dx, msg_banner
     call print_string
     
+    ; Check for command line switches
+    call check_switches
+    cmp al, 1                   ; /? help
+    je .show_help
+    cmp al, 2                   ; /R reset
+    je .do_reset
+    cmp al, 3                   ; /1 Arcade Vibrant
+    je .preset_1
+    cmp al, 4                   ; /2 Sierra Natural
+    je .preset_2
+    cmp al, 5                   ; /3 C64-inspired
+    je .preset_3
+    
+    ; Normal operation: load palette file
+    jmp .load_palette
+
+.show_help:
+    mov dx, msg_help
+    call print_string
+    jmp .exit
+
+.do_reset:
+    mov dx, msg_resetting
+    call print_string
+    call load_fallback_palette
+    call write_palette_to_dac
+    mov dx, msg_reset_done
+    call print_string
+    jmp .exit
+
+.preset_1:
+    mov dx, msg_preset1
+    call print_string
+    mov si, preset_arcade
+    jmp .apply_preset
+
+.preset_2:
+    mov dx, msg_preset2
+    call print_string
+    mov si, preset_sierra
+    jmp .apply_preset
+
+.preset_3:
+    mov dx, msg_preset3
+    call print_string
+    mov si, preset_c64
+    jmp .apply_preset
+
+.apply_preset:
+    ; Copy 12 bytes from preset to config_buffer
+    mov di, config_buffer
+    mov cx, 12
+    cld
+    rep movsb
+    ; Apply palette first, then show colors
+    call convert_and_write_palette
+    call print_colors
+    mov dx, msg_success
+    call print_string
+    jmp .exit
+
+.load_palette:
     ; Try to load config file
     call load_config
     jc .use_fallback            ; CF set = file error, use defaults
@@ -93,6 +153,9 @@ main:
     
     ; Convert 6-bit RGB to V6355D format and write to DAC
     call convert_and_write_palette
+    
+    ; Show the colors being loaded (after palette applied so blocks show correctly)
+    call print_colors
     
     ; Success message
     mov dx, msg_success
@@ -155,35 +218,15 @@ load_config:
     mov bx, [file_handle]
     int 0x21
     
-    ; Check file size to determine format
+    ; Check file size - need at least some data
     mov ax, [bytes_read]
-    cmp ax, CONFIG_SIZE
-    jb .close_error             ; Too small for either format
-    je .is_binary               ; Exactly 12 bytes = binary format
+    or ax, ax
+    jz .close_error             ; Empty file
     
-    ; More than 12 bytes - assume text format
-    jmp .is_text
-
-.is_binary:
-    ; Copy 12 bytes from text_buffer to config_buffer
-    mov si, text_buffer
-    mov di, config_buffer
-    mov cx, CONFIG_SIZE
-    cld
-    rep movsb
-    
-    mov dx, msg_loaded_bin
-    call print_string
-    clc
-    jmp .done
-
-.is_text:
     ; Parse text file format
     call parse_text_palette
     jc .parse_error
     
-    mov dx, msg_loaded_txt
-    call print_string
     clc
     jmp .done
 
@@ -488,6 +531,80 @@ get_filename:
     ret
 
 ; ============================================================================
+; check_switches - Check command line for /? or /R switches
+; Output: AL = 0 (no switch), 1 (/? help), 2 (/R reset)
+; ============================================================================
+check_switches:
+    push si
+    
+    mov si, 0x81                ; Command line starts at PSP+0x81
+
+.skip_spaces:
+    lodsb
+    cmp al, ' '
+    je .skip_spaces
+    cmp al, 0x0D                ; End of command line
+    je .no_switch
+    
+    ; Check for / or -
+    cmp al, '/'
+    je .check_char
+    cmp al, '-'
+    je .check_char
+    jmp .no_switch              ; Not a switch, probably a filename
+
+.check_char:
+    lodsb
+    ; Check for ?
+    cmp al, '?'
+    je .is_help
+    ; Check for R or r
+    cmp al, 'R'
+    je .is_reset
+    cmp al, 'r'
+    je .is_reset
+    ; Check for H or h (alternate help)
+    cmp al, 'H'
+    je .is_help
+    cmp al, 'h'
+    je .is_help
+    ; Check for preset numbers 1, 2, 3
+    cmp al, '1'
+    je .is_preset1
+    cmp al, '2'
+    je .is_preset2
+    cmp al, '3'
+    je .is_preset3
+    jmp .no_switch
+
+.is_help:
+    mov al, 1
+    jmp .switch_done
+
+.is_reset:
+    mov al, 2
+    jmp .switch_done
+
+.is_preset1:
+    mov al, 3
+    jmp .switch_done
+
+.is_preset2:
+    mov al, 4
+    jmp .switch_done
+
+.is_preset3:
+    mov al, 5
+    jmp .switch_done
+
+.no_switch:
+    xor al, al
+
+.switch_done:
+    pop si
+    ret
+
+; ============================================================================
 ; validate_palette - Validate palette data (all values 0-63)
 ; Input:  config_buffer contains 12 bytes of RGB data
 ; Output: CF clear = valid, CF set = invalid
@@ -516,6 +633,152 @@ validate_palette:
 .done:
     pop si
     pop cx
+    ret
+
+; ============================================================================
+; print_colors - Print the 4 loaded RGB colors
+; Input:  config_buffer contains 12 bytes of RGB data
+; ============================================================================
+print_colors:
+    push ax
+    push bx
+    push cx
+    push si
+    
+    mov dx, msg_colors
+    call print_string
+    
+    mov si, config_buffer
+    mov cl, 0                   ; Color index (0-3)
+
+.color_loop:
+    ; Print "  Color N: "
+    mov dx, msg_color_prefix
+    call print_string
+    mov al, cl
+    add al, '0'
+    call print_char
+    mov dx, msg_color_sep
+    call print_string
+    
+    ; Print R value
+    lodsb
+    call print_number
+    mov al, ','
+    call print_char
+    
+    ; Print G value
+    lodsb
+    call print_number
+    mov al, ','
+    call print_char
+    
+    ; Print B value
+    lodsb
+    call print_number
+    
+    ; Print colored blocks for this color
+    mov al, ' '
+    call print_char
+    mov al, cl                  ; Color index (0-3)
+    call print_color_block
+    
+    ; Newline
+    mov dx, msg_crlf
+    call print_string
+    
+    inc cl
+    cmp cl, 4
+    jb .color_loop
+    
+    pop si
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================================
+; print_color_block - Print 4 solid blocks in the specified color
+; Input:  AL = color index (0-3), maps to DAC entries 0, 11, 13, 15
+; Uses BIOS INT 10h to display colored characters
+; ============================================================================
+print_color_block:
+    push ax
+    push bx
+    push cx
+    
+    ; Map color index 0-3 to text mode attribute that matches our DAC entries
+    ; Color 0 -> attr 0  (DAC entry 0)
+    ; Color 1 -> attr 11 (DAC entry 11 = high intensity palette 1 color 1)
+    ; Color 2 -> attr 13 (DAC entry 13 = high intensity palette 1 color 2)
+    ; Color 3 -> attr 15 (DAC entry 15 = high intensity palette 1 color 3)
+    mov bl, al
+    or al, al
+    jz .have_attr               ; Color 0 stays 0
+    ; Colors 1-3 map to 11, 13, 15 = (index * 2) + 9
+    shl bl, 1                   ; BL = index * 2
+    add bl, 9                   ; BL = index * 2 + 9
+.have_attr:
+    mov bh, 0                   ; Page 0
+    mov al, 219                 ; Solid block character
+    mov cx, 4                   ; Print 4 blocks
+    mov ah, 0x09                ; Write char with attribute
+    int 0x10
+    
+    ; Move cursor forward 4 positions
+    mov ah, 0x03                ; Get cursor position
+    mov bh, 0
+    int 0x10                    ; DH=row, DL=column
+    add dl, 4                   ; Move right 4 columns
+    mov ah, 0x02                ; Set cursor position
+    int 0x10
+    
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================================
+; print_number - Print AL as decimal number (0-99)
+; Input:  AL = number to print
+; ============================================================================
+print_number:
+    push ax
+    push bx
+    push dx
+    
+    xor ah, ah
+    mov bl, 10
+    div bl                      ; AL = tens, AH = ones
+    
+    ; Print tens digit (or skip if zero)
+    or al, al
+    jz .print_ones
+    add al, '0'
+    call print_char
+    
+.print_ones:
+    mov al, ah
+    add al, '0'
+    call print_char
+    
+    pop dx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================================
+; print_char - Print single character
+; Input:  AL = character to print
+; ============================================================================
+print_char:
+    push ax
+    push dx
+    mov dl, al
+    mov ah, 0x02
+    int 0x21
+    pop dx
+    pop ax
     ret
 
 ; ============================================================================
@@ -664,87 +927,6 @@ write_palette_to_dac:
     ret
 
 ; ============================================================================
-; write_single_dac_entry - Write a single DAC palette entry
-; Input:  AL = palette index (0-15)
-;         BL = Red   (0-7, 3-bit)
-;         BH = Green (0-7, 3-bit)
-;         CL = Blue  (0-7, 3-bit)
-; Output: Specified DAC register updated
-;
-; NOTE: The V6355D requires sequential palette writes starting from index 0.
-;       For most uses, writing all 4 CGA entries at once is more efficient.
-; REPLACE THIS FUNCTION if your hardware uses different I/O ports.
-; ============================================================================
-write_single_dac_entry:
-    push ax
-    push cx
-    push dx
-    push di
-    
-    mov ah, al                  ; AH = target index
-    
-    mov al, bl
-    and al, 0x07
-    mov [temp_entry], al
-    
-    mov al, bh
-    and al, 0x07
-    shl al, 4
-    and cl, 0x07
-    or al, cl
-    mov [temp_entry+1], al
-    
-    cli
-    
-    mov al, PAL_WRITE_EN
-    mov dx, PORT_REG_ADDR
-    out dx, al
-    jmp short $+2
-    jmp short $+2
-    
-    xor di, di
-    mov dx, PORT_REG_DATA
-
-.dummy_loop:
-    cmp di, ax
-    shr ax, 8
-    cmp di, ax
-    jae .write_target
-    
-    xor al, al
-    out dx, al
-    jmp short $+2
-    out dx, al
-    jmp short $+2
-    
-    inc di
-    shl ax, 8
-    jmp .dummy_loop
-
-.write_target:
-    mov al, [temp_entry]
-    out dx, al
-    jmp short $+2
-    mov al, [temp_entry+1]
-    out dx, al
-    jmp short $+2
-    
-    mov al, PAL_WRITE_DIS
-    mov dx, PORT_REG_ADDR
-    out dx, al
-    jmp short $+2
-    
-    sti
-    
-    pop di
-    pop dx
-    pop cx
-    pop ax
-    ret
-
-temp_entry: db 0, 0
-
-; ============================================================================
 ; load_fallback_palette - Load default CGA palette into palette_buffer
 ; Sets all 16 colors to standard CGA, with default cyan/magenta/white for
 ; entries that CGA mode 4 uses.
@@ -781,14 +963,59 @@ print_string:
 ; ============================================================================
 
 msg_banner:
-    db 'PC1PAL - CGA Palette Loader for Olivetti PC1', 13, 10
-    db 'Yamaha V6355D DAC Programmer', 13, 10, '$'
+    db 'PC1PAL v0.8 - CGA Palette Loader for Olivetti PC1', 13, 10
+    db 'By Erik - 2026 - Yamaha V6355D DAC Programmer', 13, 10, '$'
 
-msg_loaded_bin:
-    db 'Binary palette file loaded.', 13, 10, '$'
+msg_help:
+    db 13, 10
+    db 'Usage: PC1PAL [file.txt] [/1] [/2] [/3] [/R] [/?]', 13, 10
+    db 13, 10
+    db '  file.txt  Load palette from text file (default: PC1PAL.TXT)', 13, 10
+    db '  /R        Reset to default CGA palette', 13, 10
+    db '  /?        Show this help', 13, 10
+    db 13, 10
+    db 'Built-in presets (RGB values 0-63):', 13, 10
+    db '  /1  Arcade Vibrant - Black, Blue(9,27,63), Red(63,9,9), Skin(63,45,27)', 13, 10
+    db '  /2  Sierra Natural - Black, Teal(9,36,36), Brown(36,18,9), Skin(63,45,36)', 13, 10
+    db '  /3  C64-inspired   - Black, Blue(18,27,63), Orange(54,27,9), Skin(63,54,36)', 13, 10
+    db 13, 10
+    db 'Text file format (one line per color, values 0-63):', 13, 10
+    db '  R,G,B     or  R G B', 13, 10
+    db '  ; comment Lines starting with ; or # are ignored', 13, 10
+    db 13, 10
+    db 'Example SUNSET.TXT:', 13, 10
+    db '  0,0,0       ; Black (background)', 13, 10
+    db '  63,32,0     ; Orange', 13, 10
+    db '  32,0,16     ; Dark Magenta', 13, 10
+    db '  63,63,32    ; Pale Yellow', 13, 10
+    db '$'
 
-msg_loaded_txt:
-    db 'Text palette file loaded.', 13, 10, '$'
+msg_preset1:
+    db 'Loading preset: Arcade Vibrant', 13, 10, '$'
+
+msg_preset2:
+    db 'Loading preset: Sierra Natural', 13, 10, '$'
+
+msg_preset3:
+    db 'Loading preset: C64-inspired', 13, 10, '$'
+
+msg_resetting:
+    db 'Resetting to default CGA palette...', 13, 10, '$'
+
+msg_reset_done:
+    db 'CGA palette restored.', 13, 10, '$'
+
+msg_colors:
+    db 'Colors (R,G,B):', 13, 10, '$'
+
+msg_color_prefix:
+    db '  Color $'
+
+msg_color_sep:
+    db ': $'
+
+msg_crlf:
+    db 13, 10, '$'
 
 msg_success:
     db 'Palette written to DAC.', 13, 10
@@ -807,7 +1034,7 @@ msg_invalid:
     db 'Warning: Invalid palette data (values must be 0-63).', 13, 10, '$'
 
 default_filename:
-    db 'PC1PAL.PAL', 0
+    db 'PC1PAL.TXT', 0
 
 ; Full 16-color CGA palette (V6355D format, 2 bytes per color)
 ; Format: Byte1 = Red[2:0], Byte2 = Green[6:4] | Blue[2:0]
@@ -829,13 +1056,31 @@ cga_full_palette:
     db 0x07, 0x70               ; 14: Yellow
     db 0x07, 0x77               ; 15: White
 
-; Fallback user palette (for when no file loaded)
-; Standard CGA Mode 4, Palette 1: Black, Cyan, Magenta, White
-cga_default_palette:
-    db 0x00, 0x00               ; 0: Black     (R=0, G=0, B=0)
-    db 0x00, 0x77               ; 1: Cyan      (R=0, G=7, B=7)
-    db 0x07, 0x07               ; 2: Magenta   (R=7, G=0, B=7)
-    db 0x07, 0x77               ; 3: White     (R=7, G=7, B=7)
+; ============================================================================
+; Preset Palettes (12 bytes each: 4 colors x 3 bytes RGB, values 0-63)
+; Order: Color 0 (background), Color 1, Color 2, Color 3
+; ============================================================================
+
+; Preset 1: Arcade Vibrant - Good for action games like World Karate Championship
+preset_arcade:
+    db 0, 0, 0                  ; 0: Black
+    db 9, 27, 63                ; 1: Blue (1,3,7 scaled to 0-63)
+    db 63, 9, 9                 ; 2: Red (7,1,1)
+    db 63, 45, 27               ; 3: Skin (7,5,3)
+
+; Preset 2: Sierra Natural - Inspired by PCjr/Tandy AGI games
+preset_sierra:
+    db 0, 0, 0                  ; 0: Black
+    db 9, 36, 36                ; 1: Teal (1,4,4)
+    db 36, 18, 9                ; 2: Brown clothing (4,2,1)
+    db 63, 45, 36               ; 3: Skin (7,5,4)
+
+; Preset 3: C64-inspired - Retro but warm feel
+preset_c64:
+    db 0, 0, 0                  ; 0: Black
+    db 18, 27, 63               ; 1: Blue (2,3,7)
+    db 54, 27, 9                ; 2: Orange/red (6,3,1)
+    db 63, 54, 36               ; 3: Skin (7,6,4)
 
 file_handle: dw 0
 bytes_read:  dw 0

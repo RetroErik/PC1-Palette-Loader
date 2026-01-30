@@ -5,7 +5,7 @@
 # Color 0: Black (background)
 0 0 0
 
-# Color 1: Deep Magenta
+# Color 1: Dark Red / Maroon
 42 0 21
 
 # Color 2: Orange

@@ -5,10 +5,12 @@ A tiny DOS utility that loads custom RGB palettes for CGA games on the Olivetti 
 ## Features
 
 - Loads custom 4-color palettes for CGA 320×200 mode
-- Supports both **binary** (12 bytes) and **text** file formats
+- **3 built-in presets** for quick palette switching
+- Supports human-readable text file format with comments
 - Works with all CGA palette modes (palette 0/1, low/high intensity)
+- Displays loaded colors with colored blocks
 - Fallback to standard CGA palette if file missing
-- No TSR needed - palette persists across mode changes
+- No TSR needed - palette persists until mode change
 - Clean exit to DOS for launching CGA games
 
 ## Hardware
@@ -34,28 +36,49 @@ PC1PAL writes your 4 custom colors to **all** these positions, so your palette w
 ## Usage
 
 ```
-PC1PAL [palette.pal]
+PC1PAL [file.txt] [/1] [/2] [/3] [/R] [/?]
 ```
 
-- If no filename specified, uses `PC1PAL.PAL` in current directory
-- If file missing or invalid, uses fallback CGA palette (Black/Cyan/Magenta/White)
+| Option | Description |
+|--------|-------------|
+| `file.txt` | Load palette from text file (default: PC1PAL.TXT) |
+| `/1` | Preset: Arcade Vibrant (action games) |
+| `/2` | Preset: Sierra Natural (adventure games) |
+| `/3` | Preset: C64-inspired (retro warm feel) |
+| `/R` | Reset to default CGA palette |
+| `/?` | Show help |
 
-### Example
+### Examples
 
 ```
-C:\GAMES> PC1PAL SUNSET.TXT
-PC1PAL - CGA Palette Loader for Olivetti PC1
-Yamaha V6355D DAC Programmer
-Text palette file loaded.
+C:\GAMES> PC1PAL /1
+PC1PAL v1.1 - CGA Palette Loader for Olivetti PC1
+By Erik - 2026 - Yamaha V6355D DAC Programmer
+Loading preset: Arcade Vibrant
+Colors (R,G,B):
+  Color 0: 0,0,0 ████
+  Color 1: 9,27,63 ████
+  Color 2: 63,9,9 ████
+  Color 3: 63,45,27 ████
 Palette written to DAC.
 Ready to run CGA programs!
 
-C:\GAMES> MONKEY.EXE
+C:\GAMES> KARATE.EXE
 ```
 
-## Config File Formats
+```
+C:\GAMES> PC1PAL SUNSET.TXT
+```
 
-### Text Format (Recommended)
+## Built-in Presets
+
+| Preset | Name | Colors (RGB 0-63) | Best For |
+|--------|------|-------------------|----------|
+| `/1` | Arcade Vibrant | Black, Blue(9,27,63), Red(63,9,9), Skin(63,45,27) | Action games |
+| `/2` | Sierra Natural | Black, Teal(9,36,36), Brown(36,18,9), Skin(63,45,36) | Adventure games |
+| `/3` | C64-inspired | Black, Blue(18,27,63), Orange(54,27,9), Skin(63,54,36) | Retro warm feel |
+
+## Text File Format
 
 Human-readable format with comments:
 
@@ -64,37 +87,21 @@ Human-readable format with comments:
 ; Values are 0-63 (6-bit RGB)
 
 0,0,0       ; Color 0: Black (background)
-42,0,21     ; Color 1: Deep Magenta
-63,21,0     ; Color 2: Orange
-63,63,0     ; Color 3: Yellow
+63,32,0     ; Color 1: Orange
+32,0,16     ; Color 2: Dark Magenta
+63,63,32    ; Color 3: Pale Yellow
 ```
 
 - One RGB triple per line: `R,G,B` or `R G B`
 - Lines starting with `;` or `#` are comments
 - Blank lines are ignored
-- Values must be 0-63
+- Values must be 0-63 (will be scaled to 0-7 for V6355D)
 
-### Binary Format
-
-12 bytes total: 4 RGB triples × 3 bytes each
-
-| Offset | Description | Range |
-|--------|-------------|-------|
-| 0-2 | Color 0: R, G, B | 0-63 |
-| 3-5 | Color 1: R, G, B | 0-63 |
-| 6-8 | Color 2: R, G, B | 0-63 |
-| 9-11 | Color 3: R, G, B | 0-63 |
-
-Files exactly 12 bytes are treated as binary; larger files are parsed as text.
-
-## Included Palettes
+## Included Palette Files
 
 | File | Colors | Description |
 |------|--------|-------------|
-| TANDY.PAL | Black, Sky Blue, Orange, White | Tandy-style enhanced |
-| TANDY.TXT | Same as above | Text format version |
-| SUNSET.PAL | Black, Deep Magenta, Orange, Yellow | Warm sunset theme |
-| SUNSET.TXT | Same as above | Text format version |
+| SUNSET.TXT | Black, Orange, Dark Magenta, Pale Yellow | Warm sunset theme |
 
 ## Building
 
@@ -116,8 +123,6 @@ Use any text editor to create a `.TXT` file:
 63,63,63    ; Color 3 (replaces White)
 ```
 
-Or use the included `mkpal.py` Python script to generate binary `.PAL` files.
-
 ## Technical Details
 
 ### V6355D Palette Format
@@ -131,6 +136,12 @@ The V6355D uses a packed 2-byte format per palette entry:
 | 2 | 2:0 | Blue (0-7) |
 
 6-bit input values (0-63) are scaled to 3-bit (0-7) by dividing by 8.
+
+### Palette Write Sequence
+
+1. Write 0x40 to port 0xDD (enable palette write)
+2. Write 32 bytes to port 0xDE (16 colors × 2 bytes each)
+3. Write 0x80 to port 0xDD (disable palette write)
 
 ### Customizing I/O Ports
 
