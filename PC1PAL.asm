@@ -964,7 +964,7 @@ print_string:
 
 msg_banner:
     db 'PC1PAL v0.8 - CGA Palette Loader for Olivetti PC1', 13, 10
-    db 'By Erik - 2026 - Yamaha V6355D DAC Programmer', 13, 10, '$'
+    db 'By Retro Erik - 2026 - Yamaha V6355D DAC Programmer', 13, 10, '$'
 
 msg_help:
     db 13, 10
