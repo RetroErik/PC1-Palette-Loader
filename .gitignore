@@ -1,0 +1,4 @@
+# Build outputs (can be regenerated)
+*.lst
+
+# Keep .COM and .PAL files - they're part of the release
