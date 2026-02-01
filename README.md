@@ -125,6 +125,8 @@ Use any text editor to create a `.TXT` file:
 
 ## Technical Details
 
+For comprehensive V6355D documentation, see [V6355D-Technical-Reference.md](../V6355D-Technical-Reference.md).
+
 ### V6355D Palette Format
 
 The V6355D uses a packed 2-byte format per palette entry:
@@ -142,6 +144,8 @@ The V6355D uses a packed 2-byte format per palette entry:
 1. Write 0x40 to port 0xDD (enable palette write)
 2. Write 32 bytes to port 0xDE (16 colors × 2 bytes each)
 3. Write 0x80 to port 0xDD (disable palette write)
+
+> **⚠️ Important:** You must include I/O delays between each palette byte write (e.g., `jmp short $+2`). The V6355D requires 300ns minimum I/O cycle time. Without delays, palette writes may be corrupted.
 
 ### Customizing I/O Ports
 
