@@ -619,6 +619,54 @@ The V6355D video chip provides 512 colors using 3-bit RGB (0-7 per channel).
 
 ---
 
+## Commodore 64 Color Palette
+
+The 16 standard C64 colors converted to PC1 format:
+
+| C64# | Name | Original RGB (8-bit) | PC1 Index | R | G | B | DAC | 6-bit RGB |
+|------|------|---------------------|-----------|---|---|---|-----|-----------|
+| 0 | Black | 0,0,0 | 0 | 0 | 0 | 0 | 00,00 | 0,0,0 |
+| 1 | White | 255,255,255 | 511 | 7 | 7 | 7 | 07,77 | 63,63,63 |
+| 2 | Red | 136,0,0 | 256 | 4 | 0 | 0 | 04,00 | 36,0,0 |
+| 3 | Cyan | 170,255,238 | 383 | 5 | 7 | 7 | 05,77 | 45,63,63 |
+| 4 | Purple | 204,68,204 | 406 | 6 | 2 | 6 | 06,26 | 54,18,54 |
+| 5 | Green | 0,204,85 | 50 | 0 | 6 | 2 | 00,62 | 0,54,18 |
+| 6 | Blue | 0,0,170 | 5 | 0 | 0 | 5 | 00,05 | 0,0,45 |
+| 7 | Yellow | 238,238,119 | 507 | 7 | 7 | 3 | 07,73 | 63,63,27 |
+| 8 | Orange | 221,136,85 | 418 | 6 | 4 | 2 | 06,42 | 54,36,18 |
+| 9 | Brown | 102,68,0 | 208 | 3 | 2 | 0 | 03,20 | 27,18,0 |
+| 10 | Light Red | 255,119,119 | 475 | 7 | 3 | 3 | 07,33 | 63,27,27 |
+| 11 | Dark Grey | 51,51,51 | 73 | 1 | 1 | 1 | 01,11 | 9,9,9 |
+| 12 | Grey | 119,119,119 | 219 | 3 | 3 | 3 | 03,33 | 27,27,27 |
+| 13 | Light Green | 170,255,102 | 379 | 5 | 7 | 3 | 05,73 | 45,63,27 |
+| 14 | Light Blue | 0,136,255 | 39 | 0 | 4 | 7 | 00,47 | 0,36,63 |
+| 15 | Light Grey | 187,187,187 | 365 | 5 | 5 | 5 | 05,55 | 45,45,45 |
+
+### C64 Palette File (PC1PAL format)
+
+```
+; Commodore 64 color palette
+; R,G,B (6-bit values 0-63)
+0,0,0       ; 0: Black
+63,63,63    ; 1: White
+36,0,0      ; 2: Red
+45,63,63    ; 3: Cyan
+54,18,54    ; 4: Purple
+0,54,18     ; 5: Green
+0,0,45      ; 6: Blue
+63,63,27    ; 7: Yellow
+54,36,18    ; 8: Orange
+27,18,0     ; 9: Brown
+63,27,27    ; 10: Light Red
+9,9,9       ; 11: Dark Grey
+27,27,27    ; 12: Grey
+45,63,27    ; 13: Light Green
+0,36,63     ; 14: Light Blue
+45,45,45    ; 15: Light Grey
+```
+
+---
+
 ## Usage with PC1PAL
 
 To use these colors in a PC1PAL palette file, list 16 colors with their 6-bit RGB values (0-63):

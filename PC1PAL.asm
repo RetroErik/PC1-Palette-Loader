@@ -2,7 +2,7 @@
 ; PC1PAL.ASM - CGA Palette Override Utility for Olivetti Prodest PC1
 ; Written for NASM - NEC V40 (80186 compatible)
 ; By Retro Erik - 2026 using VS Code with GitHub Copilot
-; Version 0.8
+; Version 0.9
 ; ============================================================================
 ; Loads custom RGB palette from text file and writes to V6355D DAC
 ;
@@ -93,6 +93,10 @@ main:
     je .preset_2
     cmp al, 5                   ; /3 C64-inspired
     je .preset_3
+    cmp al, 6                   ; /4 CGA Blue and Red 
+    je .preset_4
+    cmp al, 7                   ; /5 CGA Blue and Green
+    je .preset_5
     
     ; Normal operation: load palette file
     jmp .load_palette
@@ -127,6 +131,18 @@ main:
     mov dx, msg_preset3
     call print_string
     mov si, preset_c64
+    jmp .apply_preset
+
+.preset_4:
+    mov dx, msg_preset4
+    call print_string
+    mov si, preset_cga_text
+    jmp .apply_preset
+
+.preset_5:
+    mov dx, msg_preset5
+    call print_string
+    mov si, preset_cga_palette
     jmp .apply_preset
 
 .apply_preset:
@@ -568,13 +584,17 @@ check_switches:
     je .is_help
     cmp al, 'h'
     je .is_help
-    ; Check for preset numbers 1, 2, 3
+    ; Check for preset numbers 1, 2, 3, 4, 5
     cmp al, '1'
     je .is_preset1
     cmp al, '2'
     je .is_preset2
     cmp al, '3'
     je .is_preset3
+    cmp al, '4'
+    je .is_preset4
+    cmp al, '5'
+    je .is_preset5
     jmp .no_switch
 
 .is_help:
@@ -595,6 +615,14 @@ check_switches:
 
 .is_preset3:
     mov al, 5
+    jmp .switch_done
+
+.is_preset4:
+    mov al, 6
+    jmp .switch_done
+
+.is_preset5:
+    mov al, 7
     jmp .switch_done
 
 .no_switch:
@@ -963,12 +991,13 @@ print_string:
 ; ============================================================================
 
 msg_banner:
-    db 'PC1PAL v0.8 - CGA Palette Loader for Olivetti PC1', 13, 10
-    db 'By Retro Erik - 2026 - Yamaha V6355D DAC Programmer', 13, 10, '$'
+    db 'PC1PAL v0.9 - CGA Palette Loader for Olivetti PC1', 13, 10
+    db 'By Retro Erik - 2026 - Yamaha V6355D DAC Programmer', 13, 10
+    db 'Type: PC1PAL /? for help', 13, 10, '$'
 
 msg_help:
     db 13, 10
-    db 'Usage: PC1PAL [file.txt] [/1] [/2] [/3] [/R] [/?]', 13, 10
+    db 'Usage: PC1PAL [file.txt] [/1] [/2] [/3] [/4] [/5] [/R] [/?]', 13, 10
     db 13, 10
     db '  file.txt  Load palette from text file (default: PC1PAL.TXT)', 13, 10
     db '  /R        Reset to default CGA palette', 13, 10
@@ -978,16 +1007,12 @@ msg_help:
     db '  /1  Arcade Vibrant - Black, Blue(9,27,63), Red(63,9,9), Skin(63,45,27)', 13, 10
     db '  /2  Sierra Natural - Black, Teal(9,36,36), Brown(36,18,9), Skin(63,45,36)', 13, 10
     db '  /3  C64-inspired   - Black, Blue(18,27,63), Orange(54,27,9), Skin(63,54,36)', 13, 10
+    db '  /4  CGA-inspired 1 - Black, Red(63,9,9), Green(9,63,9), White(63,63,63)', 13, 10
+    db '  /5  CGA-inspired 2 - Black, Red(63,0,0), Blue(0,0,63), White(63,63,63)', 13, 10
     db 13, 10
     db 'Text file format (one line per color, values 0-63):', 13, 10
     db '  R,G,B     or  R G B', 13, 10
     db '  ; comment Lines starting with ; or # are ignored', 13, 10
-    db 13, 10
-    db 'Example SUNSET.TXT:', 13, 10
-    db '  0,0,0       ; Black (background)', 13, 10
-    db '  63,32,0     ; Orange', 13, 10
-    db '  32,0,16     ; Dark Magenta', 13, 10
-    db '  63,63,32    ; Pale Yellow', 13, 10
     db '$'
 
 msg_preset1:
@@ -998,6 +1023,12 @@ msg_preset2:
 
 msg_preset3:
     db 'Loading preset: C64-inspired', 13, 10, '$'
+
+msg_preset4:
+    db 'Loading preset: CGA-inspired 1', 13, 10, '$'
+
+msg_preset5:
+    db 'Loading preset: CGA-inspired 2', 13, 10, '$'
 
 msg_resetting:
     db 'Resetting to default CGA palette...', 13, 10, '$'
@@ -1081,6 +1112,20 @@ preset_c64:
     db 18, 27, 63               ; 1: Blue (2,3,7)
     db 54, 27, 9                ; 2: Orange/red (6,3,1)
     db 63, 54, 36               ; 3: Skin (7,6,4)
+
+; Preset 4: CGA Text Palette - From CGA text mode
+preset_cga_text:
+    db 0, 0, 0                  ; 0: Black
+    db 63, 9, 9                 ; 1: Red (7,1,1)
+    db 9, 63, 9                 ; 2: Green (1,7,1)
+    db 63, 63, 63               ; 3: White (7,7,7)
+
+; Preset 5: CGA Palette - From CGA graphics palette 0
+preset_cga_palette:
+    db 0, 0, 0                  ; 0: Black
+    db 63, 0, 0                 ; 1: Red (7,0,0)
+    db 0, 0, 63                 ; 2: Blue (0,0,7)
+    db 63, 63, 63               ; 3: White (7,7,7)
 
 file_handle: dw 0
 bytes_read:  dw 0
