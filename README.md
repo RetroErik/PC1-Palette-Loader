@@ -78,6 +78,25 @@ C:\GAMES> PC1PAL SUNSET.TXT
 | `/2` | Sierra Natural | Black, Teal(9,36,36), Brown(36,18,9), Skin(63,45,36) | Adventure games |
 | `/3` | C64-inspired | Black, Blue(18,27,63), Orange(54,27,9), Skin(63,54,36) | Retro warm feel |
 
+## Screenshots
+
+*CGA games running with custom PC1PAL palettes:*
+
+<img src="Screenshots/Montezuma.jpg" width="60%" alt="Montezuma's Revenge">
+<br><em>Montezuma's Revenge</em>
+
+<img src="Screenshots/Popcorn.jpg" width="60%" alt="Popcorn">
+<br><em>Popcorn</em>
+
+<img src="Screenshots/Vectorbal.jpg" width="60%" alt="Vectorball">
+<br><em>Vectorball</em>
+
+<img src="Screenshots/World%20Karate.jpg" width="60%" alt="World Karate">
+<br><em>World Karate</em>
+
+<img src="Screenshots/Zaxxon.jpg" width="60%" alt="Zaxxon">
+<br><em>Zaxxon</em>
+
 ## Text File Format
 
 Human-readable format with comments:
