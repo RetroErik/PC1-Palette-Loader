@@ -7,6 +7,8 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
 ![Olivetti Prodest PC1](https://img.shields.io/badge/Platform-Olivetti%20Prodest%20PC1-blue)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-green)
 
+### ▶️ [Watch the video on YouTube](https://youtu.be/uqIDscWm9C0)
+
 ### 📥 [Download pc1pal.com — the only file you need](pc1pal.com)
 
 ## Features
