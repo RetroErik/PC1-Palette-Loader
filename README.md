@@ -2,6 +2,13 @@
 
 A tiny DOS utility that loads custom RGB palettes for CGA games on the Olivetti Prodest PC1. The PC1 uses the Yamaha V6355D video chip with a programmable 16-entry RGB DAC.
 
+By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube.com/@RetroErik)
+
+![Olivetti Prodest PC1](https://img.shields.io/badge/Platform-Olivetti%20Prodest%20PC1-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+### 📥 [Download pc1pal.com — the only file you need](pc1pal.com)
+
 ## Features
 
 - Loads custom 4-color palettes for CGA 320×200 mode
