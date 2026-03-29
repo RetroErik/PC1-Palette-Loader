@@ -163,3 +163,10 @@ MIT License - See [LICENSE](LICENSE) file
 ## Author
 
 Retro Erik - 2026
+
+---
+
+## YouTube
+
+For more retro computing content, visit my YouTube channel **Retro Hardware and Software**:
+[https://www.youtube.com/@RetroErik](https://www.youtube.com/@RetroErik)
