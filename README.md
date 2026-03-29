@@ -188,7 +188,7 @@ MIT License - See [LICENSE](LICENSE) file
 
 ## Author
 
-Retro Erik - 2026
+Dag Erik Hagesæter - 2026
 
 ---
 
