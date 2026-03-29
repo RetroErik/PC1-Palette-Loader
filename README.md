@@ -5,7 +5,7 @@ A tiny DOS utility that loads custom RGB palettes for CGA games on the Olivetti 
 By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube.com/@RetroErik)
 
 ![Olivetti Prodest PC1](https://img.shields.io/badge/Platform-Olivetti%20Prodest%20PC1-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
+![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-green)
 
 ### 📥 [Download pc1pal.com — the only file you need](pc1pal.com)
 
