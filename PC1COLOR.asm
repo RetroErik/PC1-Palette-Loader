@@ -1,10 +1,20 @@
 ; ============================================================================
 ; PC1COLOR.ASM - Color Chart Viewer for Olivetti Prodest PC1
-; Version 1.6 - Based EXACTLY on working v1.3 structure
-; Not working - yet
+; Version 2 - 4x4 Grid picker with arrow-key cursor navigation
+; ============================================================================
+; Browses all 512 V6355D colors (3-bit RGB), 16 per page across 32 pages.
+; Color index = R*64 + G*8 + B   (R,G,B each 0-7)
+; DAC byte 1 = R, byte 2 = (G<<4)|B
+;
+; Controls: Arrows = move cursor, PgUp/PgDn = page, Home/End = skip 10
+;           Q / ESC = quit
+;
+; Layout: 4x4 grid of color swatches, each 18x5 characters.
+;         Selected swatch has bright white border. Detail at bottom.
 ; ============================================================================
 
 [BITS 16]
+[CPU 186]
 [ORG 0x100]
 
 PORT_REG_ADDR   equ 0xDD
@@ -12,199 +22,725 @@ PORT_REG_DATA   equ 0xDE
 PAL_WRITE_EN    equ 0x40
 PAL_WRITE_DIS   equ 0x80
 
+GRID_TOP        equ 2          ; First grid row on screen
+GRID_LEFT       equ 1          ; First grid column
+CELL_W          equ 19         ; Cell width in chars
+CELL_H          equ 5          ; Cell height in rows
+BLOCK_W         equ 16         ; Color block width inside cell
+BLOCK_H         equ 3          ; Color block height
+DETAIL_ROW      equ 23         ; Row for detail info
+FOOTER_ROW      equ 24         ; Row for footer
+
 ; ============================================================================
 ; Main
 ; ============================================================================
 main:
+    cld                         ; Clear direction flag for stosw/lodsb
     mov byte [current_page], 0
+    mov byte [cursor_pos], 0
 
-main_loop:
-    ; Banner
-    mov dx, msg_banner
-    mov ah, 0x09
-    int 0x21
-    
-    ; Page info - proper 2-digit
-    mov dx, msg_page
-    mov ah, 0x09
-    int 0x21
-    xor ax, ax
-    mov al, [current_page]
-    inc al                  ; 1-based
-    call print_num
-    mov dx, msg_of32
-    mov ah, 0x09
-    int 0x21
-    
-    ; Build palette
+.loop:
     call build_palette
     call write_palette
-    
-    ; Show 16 colors - EXACTLY like v1.3
-    call show_colors
-    
-    ; Footer
-    mov dx, msg_footer
-    mov ah, 0x09
-    int 0x21
-    
-    ; Get key
-    mov ah, 0x00
+    call draw_screen
+
+    ; Wait for key
+    xor ax, ax
     int 0x16
-    
+
     ; Quit?
     cmp al, 'q'
-    je quit
+    je .quit
     cmp al, 'Q'
-    je quit
+    je .quit
     cmp al, 27
-    je quit
-    
-    ; Space = next
-    cmp al, ' '
-    je next_page
-    
+    je .quit
+
     ; Extended key?
     or al, al
-    jnz main_loop
-    
-    cmp ah, 0x4D            ; Right
-    je next_page
+    jnz .loop
+
+    ; Arrow keys move cursor
+    cmp ah, 0x48            ; Up
+    je .up
+    cmp ah, 0x50            ; Down
+    je .down
     cmp ah, 0x4B            ; Left
-    je prev_page
-    jmp main_loop
+    je .left
+    cmp ah, 0x4D            ; Right
+    je .right
+    cmp ah, 0x49            ; Page Up
+    je .pgup
+    cmp ah, 0x51            ; Page Down
+    je .pgdn
+    cmp ah, 0x47            ; Home
+    je .home
+    cmp ah, 0x4F            ; End
+    je .end_key
+    jmp .loop
 
-next_page:
-    cmp byte [current_page], 31
-    jge main_loop
-    inc byte [current_page]
-    jmp main_loop
+.up:
+    cmp byte [cursor_pos], 4
+    jl .loop
+    sub byte [cursor_pos], 4
+    jmp .loop
 
-prev_page:
+.down:
+    cmp byte [cursor_pos], 12
+    jge .loop
+    add byte [cursor_pos], 4
+    jmp .loop
+
+.left:
+    mov al, [cursor_pos]
+    and al, 3
+    jz .left_prevpage
+    dec byte [cursor_pos]
+    jmp .loop
+.left_prevpage:
     cmp byte [current_page], 0
-    jle main_loop
+    jle .loop
     dec byte [current_page]
-    jmp main_loop
+    mov al, [cursor_pos]
+    or al, 3
+    mov [cursor_pos], al
+    jmp .loop
 
-quit:
-    mov dx, msg_bye
-    mov ah, 0x09
-    int 0x21
+.right:
+    mov al, [cursor_pos]
+    and al, 3
+    cmp al, 3
+    je .right_nextpage
+    inc byte [cursor_pos]
+    jmp .loop
+.right_nextpage:
+    cmp byte [current_page], 31
+    jge .loop
+    inc byte [current_page]
+    mov al, [cursor_pos]
+    and al, 0xFC
+    mov [cursor_pos], al
+    jmp .loop
+
+.pgdn:
+    cmp byte [current_page], 31
+    jge .loop
+    inc byte [current_page]
+    jmp .loop
+
+.pgup:
+    cmp byte [current_page], 0
+    jle .loop
+    dec byte [current_page]
+    jmp .loop
+
+.end_key:
+    mov al, [current_page]
+    add al, 10
+    cmp al, 31
+    jle .end_ok
+    mov al, 31
+.end_ok:
+    mov [current_page], al
+    jmp .loop
+
+.home:
+    mov al, [current_page]
+    sub al, 10
+    jge .home_ok
+    xor al, al
+.home_ok:
+    mov [current_page], al
+    jmp .loop
+
+.quit:
     call restore_palette
+    call cls_screen
+    ; Place cursor at top-left via BIOS data area
+    mov ax, 0x0040
+    mov es, ax
+    mov word [es:0x0050], 0     ; Col 0, Row 0
+    ; Pick random exit message from BIOS tick counter
+    mov ax, [es:0x006C]        ; Low word of timer tick
+    and ax, 7                   ; 0..7 (8 messages)
+    shl ax, 1                   ; *2 for word table
+    mov bx, ax
+    mov dx, [bye_table + bx]
+    call dos_print
     mov ax, 0x4C00
     int 0x21
 
 ; ============================================================================
-; build_palette - EXACTLY like v1.3 but with page offset
+; cls_screen - Clear screen via VRAM
 ; ============================================================================
-build_palette:
+cls_screen:
+    push ax
+    push cx
+    push di
+    push es
+    mov ax, 0xB800
+    mov es, ax
+    xor di, di
+    mov ax, 0x0720
+    mov cx, 2000
+    rep stosw
+    pop es
+    pop di
+    pop cx
+    pop ax
+    ret
+
+; ============================================================================
+; draw_screen - Render entire 4x4 grid display via direct VRAM writes
+; ============================================================================
+draw_screen:
     push ax
     push bx
+    push cx
+    push dx
+    push si
     push di
-    
-    mov di, palette_buffer
-    xor bx, bx              ; Entry 0-15
-    
-bp_loop:
-    ; Keep 7 and 15 white
-    cmp bx, 7
-    je bp_white
-    cmp bx, 15
-    je bp_white
-    
-    ; Color = page*16 + entry
-    xor ax, ax
+    push es
+
+    mov ax, 0xB800
+    mov es, ax
+
+    call cls_screen
+
+    ; --- Header row 0 ---
+    xor di, di
+    mov si, hdr_title
+    mov byte [vram_attr], 0x0F     ; Bright white header
+    call vram_print_str
+
     mov al, [current_page]
-    shl ax, 1
-    shl ax, 1
-    shl ax, 1
-    shl ax, 1               ; *16
-    add ax, bx              ; + entry
-    
-    ; Byte 1: R (index >> 6) & 7
-    push ax
-    push ax
-    shr ax, 1
-    shr ax, 1
-    shr ax, 1
-    shr ax, 1
-    shr ax, 1
-    shr ax, 1               ; >> 6
-    and al, 0x07
-    stosb
-    
-    ; Byte 2: (G << 4) | B
-    pop ax
-    push ax
-    shr ax, 1
-    shr ax, 1
-    shr ax, 1               ; >> 3 for G
-    and al, 0x07
-    shl al, 1
-    shl al, 1
-    shl al, 1
-    shl al, 1               ; << 4
-    mov ah, al              ; G in AH
-    
-    pop ax                  ; Original color
-    and al, 0x07            ; B
-    or al, ah               ; G | B
-    stosb
-    
-    pop ax                  ; Balance stack
-    jmp bp_next
+    inc al
+    call vram_print_dec2
 
-bp_white:
-    mov al, 0x07
-    stosb
-    mov al, 0x77
-    stosb
+    mov si, hdr_of32
+    call vram_print_str
 
-bp_next:
-    inc bx
-    cmp bx, 16
-    jl bp_loop
-    
+    ; Credit text right-aligned on row 0 (col 53)
+    mov di, 106                ; Col 53 * 2
+    mov si, hdr_credit
+    mov byte [vram_attr], 0x07  ; Normal white
+    call vram_print_str
+
+    ; --- Row 1: blank (already cleared) ---
+
+    ; --- Draw 4x4 grid ---
+    mov byte [grid_idx], 0
+
+.grid_loop:
+    ; Row = grid_idx / 4,  Col = grid_idx % 4
+    mov al, [grid_idx]
+    mov cl, 2
+    shr al, cl
+    mov [grid_row], al          ; 0..3
+
+    mov al, [grid_idx]
+    and al, 3
+    mov [grid_col], al          ; 0..3
+
+    ; VRAM offset for cell top-left:
+    ; row_offset = (GRID_TOP + grid_row * CELL_H) * 160
+    xor ax, ax
+    mov al, [grid_row]
+    mov bl, CELL_H
+    mul bl                      ; AX = grid_row * CELL_H
+    add al, GRID_TOP
+    mov bl, 160
+    mul bl                      ; AX = screen_row * 160
+    mov di, ax
+
+    ; col_offset = (GRID_LEFT + grid_col * CELL_W) * 2
+    xor ax, ax
+    mov al, [grid_col]
+    mov bl, CELL_W
+    mul bl
+    add al, GRID_LEFT
+    shl ax, 1
+    add di, ax                  ; DI = top-left VRAM offset
+    mov [cell_base], di
+
+    ; --- Determine highlight ---
+    mov al, [grid_idx]
+    cmp al, [cursor_pos]
+    je .is_selected
+    mov byte [cell_label_attr], 0x07   ; Normal (entry 7 = white)
+    jmp .draw_label
+.is_selected:
+    mov byte [cell_label_attr], 0x0F   ; Bright (entry 15 = white)
+
+.draw_label:
+    ; Move DI to label row (no offset for border — border is at bottom)
+    mov di, [cell_base]
+
+    ; Print: "xNNN r,g,b       " where x is > for selected, space otherwise
+    mov ah, [cell_label_attr]
+
+    ; Selection indicator
+    mov al, [grid_idx]
+    cmp al, [cursor_pos]
+    jne .lbl_nosel
+    mov al, 0x10              ; Right-pointing triangle ►
+    jmp .lbl_write
+.lbl_nosel:
+    mov al, ' '
+.lbl_write:
+    mov ah, [cell_label_attr]
+    mov [es:di], ax
+    add di, 2
+
+    ; 3-digit color index
+    call calc_grid_color        ; [entry_color] = page*16 + grid_idx
+
+    mov ax, [entry_color]
+    call vram_put_3digit        ; Uses [cell_label_attr]
+
+    ; Space
+    mov ah, [cell_label_attr]
+    mov al, ' '
+    mov [es:di], ax
+    add di, 2
+
+    ; R digit
+    mov ax, [entry_color]
+    mov cl, 6
+    shr ax, cl
+    and al, 7
+    add al, '0'
+    mov ah, [cell_label_attr]
+    mov [es:di], ax
+    add di, 2
+
+    ; Comma
+    mov al, ','
+    mov [es:di], ax
+    add di, 2
+
+    ; G digit
+    mov ax, [entry_color]
+    mov cl, 3
+    shr ax, cl
+    and al, 7
+    add al, '0'
+    mov ah, [cell_label_attr]
+    mov [es:di], ax
+    add di, 2
+
+    ; Comma
+    mov al, ','
+    mov [es:di], ax
+    add di, 2
+
+    ; B digit
+    mov ax, [entry_color]
+    and al, 7
+    add al, '0'
+    mov ah, [cell_label_attr]
+    mov [es:di], ax
+    add di, 2
+
+    ; Pad rest of label row with spaces (18 - 11 used = 7)
+    mov cx, 7
+.lpad:
+    mov al, ' '
+    mov ah, [cell_label_attr]
+    mov [es:di], ax
+    add di, 2
+    loop .lpad
+
+    ; --- Color block rows ---
+    ; cell_base + 160 (label row) = first block row
+    mov di, [cell_base]
+    add di, 160                 ; Skip label row
+
+    ; BLOCK_H rows of BLOCK_W colored chars
+    mov cl, BLOCK_H
+.blk_row:
+    push cx
+    push di
+    add di, 2                   ; 1-char indent
+
+    mov al, [grid_idx]         ; Foreground attr = palette entry
+    mov cx, BLOCK_W
+.blk_col:
+    mov byte [es:di], 0xDB
+    mov [es:di+1], al
+    add di, 2
+    loop .blk_col
+
     pop di
+    add di, 160
+    pop cx
+    dec cl
+    jnz .blk_row
+
+    ; --- Bottom border if highlighted ---
+    mov al, [grid_idx]
+    cmp al, [cursor_pos]
+    jne .no_bot
+
+    ; DI is now at row after last block row
+    mov cx, 18
+    mov ah, 0x0F
+    mov al, 0xC4
+.hbot:
+    mov [es:di], ax
+    add di, 2
+    loop .hbot
+.no_bot:
+
+    ; Next entry
+    inc byte [grid_idx]
+    cmp byte [grid_idx], 16
+    jge .grid_done
+    jmp .grid_loop
+.grid_done:
+
+    ; --- Detail line (row 23) ---
+    mov di, DETAIL_ROW * 160
+
+    mov si, det_color
+    mov byte [vram_attr], 0x07
+    call vram_print_str
+
+    ; Selected color index
+    call calc_cursor_color
+    mov ax, [entry_color]
+    mov byte [vram_attr], 0x0F
+    call vram_put_3digit_v
+
+    ; R:
+    mov si, det_r
+    mov byte [vram_attr], 0x07
+    call vram_print_str
+    mov ax, [entry_color]
+    mov cl, 6
+    shr ax, cl
+    and al, 7
+    add al, '0'
+    mov ah, 0x0F
+    mov [es:di], ax
+    add di, 2
+
+    ; G:
+    mov si, det_g
+    mov byte [vram_attr], 0x07
+    call vram_print_str
+    mov ax, [entry_color]
+    mov cl, 3
+    shr ax, cl
+    and al, 7
+    add al, '0'
+    mov ah, 0x0F
+    mov [es:di], ax
+    add di, 2
+
+    ; B:
+    mov si, det_b
+    mov byte [vram_attr], 0x07
+    call vram_print_str
+    mov ax, [entry_color]
+    and al, 7
+    add al, '0'
+    mov ah, 0x0F
+    mov [es:di], ax
+    add di, 2
+
+    ; Preview swatch at end of detail row: 12 chars wide
+    mov di, DETAIL_ROW * 160 + 120   ; Col 60
+    mov al, [cursor_pos]
+    mov cx, 12
+.preview:
+    mov byte [es:di], 0xDB
+    mov [es:di+1], al
+    add di, 2
+    loop .preview
+
+    ; --- Footer (row 24) ---
+    mov di, FOOTER_ROW * 160
+    mov si, msg_footer
+    mov byte [vram_attr], 0x07     ; Normal footer (entry 7 = white)
+    call vram_print_str
+
+    pop es
+    pop di
+    pop si
+    pop dx
+    pop cx
     pop bx
     pop ax
     ret
 
 ; ============================================================================
-; write_palette - EXACT copy from working v1.3
+; calc_grid_color - entry_color = page*16 + grid_idx
+; ============================================================================
+calc_grid_color:
+    push ax
+    push bx
+    push cx
+    xor ax, ax
+    mov al, [current_page]
+    mov cl, 4
+    shl ax, cl
+    xor bx, bx
+    mov bl, [grid_idx]
+    add ax, bx
+    mov [entry_color], ax
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================================
+; calc_cursor_color - entry_color = page*16 + cursor_pos
+; ============================================================================
+calc_cursor_color:
+    push ax
+    push bx
+    push cx
+    xor ax, ax
+    mov al, [current_page]
+    mov cl, 4
+    shl ax, cl
+    xor bx, bx
+    mov bl, [cursor_pos]
+    add ax, bx
+    mov [entry_color], ax
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================================
+; vram_print_str - Print null-terminated string at ES:DI, attr [vram_attr]
+; ============================================================================
+vram_print_str:
+    push ax
+    push si
+    mov ah, [vram_attr]
+.lp:
+    lodsb
+    or al, al
+    jz .dn
+    mov [es:di], ax
+    add di, 2
+    jmp .lp
+.dn:
+    pop si
+    pop ax
+    ret
+
+; ============================================================================
+; vram_print_dec2 - Print AL as 2-digit decimal at ES:DI, attr [vram_attr]
+; ============================================================================
+vram_print_dec2:
+    push ax
+    push dx
+    xor ah, ah
+    mov dl, 10
+    div dl
+    push ax
+    add al, '0'
+    mov ah, [vram_attr]
+    mov [es:di], ax
+    add di, 2
+    pop ax
+    mov al, ah
+    add al, '0'
+    mov ah, [vram_attr]
+    mov [es:di], ax
+    add di, 2
+    pop dx
+    pop ax
+    ret
+
+; ============================================================================
+; vram_put_3digit - Print AX (0-511) as 3 digits, attr [cell_label_attr]
+; ============================================================================
+vram_put_3digit:
+    push ax
+    push bx
+    push dx
+    xor dx, dx
+    mov bx, 100
+    div bx
+    push dx
+    add al, '0'
+    mov ah, [cell_label_attr]
+    mov [es:di], ax
+    add di, 2
+    pop ax
+    xor dx, dx
+    mov bl, 10
+    div bl
+    push ax
+    add al, '0'
+    mov ah, [cell_label_attr]
+    mov [es:di], ax
+    add di, 2
+    pop ax
+    mov al, ah
+    add al, '0'
+    mov ah, [cell_label_attr]
+    mov [es:di], ax
+    add di, 2
+    pop dx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================================
+; vram_put_3digit_v - Print AX (0-511) as 3 digits, attr [vram_attr]
+; ============================================================================
+vram_put_3digit_v:
+    push ax
+    push bx
+    push dx
+    xor dx, dx
+    mov bx, 100
+    div bx
+    push dx
+    add al, '0'
+    mov ah, [vram_attr]
+    mov [es:di], ax
+    add di, 2
+    pop ax
+    xor dx, dx
+    mov bl, 10
+    div bl
+    push ax
+    add al, '0'
+    mov ah, [vram_attr]
+    mov [es:di], ax
+    add di, 2
+    pop ax
+    mov al, ah
+    add al, '0'
+    mov ah, [vram_attr]
+    mov [es:di], ax
+    add di, 2
+    pop dx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================================
+; dos_print - Print '$'-terminated string via DOS (exit only)
+; ============================================================================
+dos_print:
+    push ax
+    mov ah, 0x09
+    int 0x21
+    pop ax
+    ret
+
+; ============================================================================
+; build_palette - Build 16-entry DAC palette for current page
+; Entry 0 = forced black (background), 7 and 15 = forced white (text)
+; ============================================================================
+build_palette:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+
+    mov si, 0
+    mov bx, palette_buffer
+
+.entry:
+    cmp si, 0
+    je .black
+    cmp si, 7
+    je .white
+    cmp si, 15
+    je .white
+
+    xor ax, ax
+    mov al, [current_page]
+    mov cl, 4
+    shl ax, cl
+    add ax, si
+
+    ; Byte 1: R
+    mov dx, ax
+    mov cl, 6
+    shr ax, cl
+    and al, 0x07
+    mov [bx], al
+    inc bx
+
+    ; Byte 2: (G<<4)|B
+    mov ax, dx
+    mov cl, 3
+    shr ax, cl
+    and al, 0x07
+    mov cl, 4
+    shl al, cl
+    mov ah, al
+    mov al, dl
+    and al, 0x07
+    or al, ah
+    mov [bx], al
+    inc bx
+    jmp .next
+
+.white:
+    mov byte [bx], 0x07
+    inc bx
+    mov byte [bx], 0x77
+    inc bx
+    jmp .next
+
+.black:
+    mov byte [bx], 0x00
+    inc bx
+    mov byte [bx], 0x00
+    inc bx
+
+.next:
+    inc si
+    cmp si, 16
+    jl .entry
+
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================================
+; write_palette - Write palette_buffer to V6355D DAC
 ; ============================================================================
 write_palette:
     push ax
     push cx
     push dx
     push si
-    
     cli
-    
     mov al, PAL_WRITE_EN
     mov dx, PORT_REG_ADDR
     out dx, al
     jmp short $+2
     jmp short $+2
-    
     mov si, palette_buffer
     mov cx, 32
     mov dx, PORT_REG_DATA
-    
-wp_loop:
+.wr:
     lodsb
     out dx, al
     jmp short $+2
-    loop wp_loop
-    
+    loop .wr
     jmp short $+2
     mov al, PAL_WRITE_DIS
     mov dx, PORT_REG_ADDR
     out dx, al
     jmp short $+2
-    
     sti
-    
     pop si
     pop dx
     pop cx
@@ -212,181 +748,36 @@ wp_loop:
     ret
 
 ; ============================================================================
-; restore_palette - EXACT copy from working v1.3
+; restore_palette - Restore standard CGA palette
 ; ============================================================================
 restore_palette:
     push ax
     push cx
     push dx
     push si
-    
     cli
-    
     mov al, PAL_WRITE_EN
     mov dx, PORT_REG_ADDR
     out dx, al
     jmp short $+2
     jmp short $+2
-    
     mov si, cga_palette
     mov cx, 32
     mov dx, PORT_REG_DATA
-    
-rp_loop:
+.wr:
     lodsb
     out dx, al
     jmp short $+2
-    loop rp_loop
-    
+    loop .wr
     jmp short $+2
     mov al, PAL_WRITE_DIS
     mov dx, PORT_REG_ADDR
     out dx, al
     jmp short $+2
-    
     sti
-    
     pop si
     pop dx
     pop cx
-    pop ax
-    ret
-
-; ============================================================================
-; show_colors - Show 16 colors with ACTUAL RGB values and color blocks
-; Uses memory variables to avoid register corruption from INT calls
-; ============================================================================
-show_colors:
-    push ax
-    push bx
-    push dx
-    
-    ; Calculate base: page * 16
-    xor ax, ax
-    mov al, [current_page]
-    shl ax, 1
-    shl ax, 1
-    shl ax, 1
-    shl ax, 1               ; * 16
-    mov [sc_base], ax
-    
-    mov byte [sc_entry], 0
-    
-sc_loop:
-    ; Print colored block (4 chars)
-    mov al, 219             ; Solid block char
-    mov bl, [sc_entry]      ; Attribute = entry number (0-15)
-    mov bh, 0               ; Page 0
-    mov cx, 4               ; 4 blocks
-    mov ah, 0x09            ; Write char with attr
-    int 0x10
-    
-    ; Move cursor forward 4 positions
-    mov ah, 0x03            ; Get cursor position
-    mov bh, 0
-    int 0x10                ; DH=row, DL=column
-    add dl, 4
-    mov ah, 0x02            ; Set cursor position
-    int 0x10
-    
-    ; Actual color = base + entry
-    mov ax, [sc_base]
-    xor bx, bx
-    mov bl, [sc_entry]
-    add ax, bx
-    mov [sc_color], ax
-    
-    ; Print entry number (2-digit)
-    call print_num
-    
-    mov dx, msg_r
-    mov ah, 0x09
-    int 0x21
-    
-    ; R value = (color >> 6) & 7
-    mov ax, [sc_color]
-    shr ax, 1
-    shr ax, 1
-    shr ax, 1
-    shr ax, 1
-    shr ax, 1
-    shr ax, 1
-    and al, 7
-    add al, '0'
-    mov dl, al
-    mov ah, 0x02
-    int 0x21
-    
-    mov dx, msg_g
-    mov ah, 0x09
-    int 0x21
-    
-    ; G value = (color >> 3) & 7
-    mov ax, [sc_color]
-    shr ax, 1
-    shr ax, 1
-    shr ax, 1
-    and al, 7
-    add al, '0'
-    mov dl, al
-    mov ah, 0x02
-    int 0x21
-    
-    mov dx, msg_b
-    mov ah, 0x09
-    int 0x21
-    
-    ; B value = color & 7
-    mov ax, [sc_color]
-    and al, 7
-    add al, '0'
-    mov dl, al
-    mov ah, 0x02
-    int 0x21
-    
-    mov dx, msg_crlf
-    mov ah, 0x09
-    int 0x21
-    
-    inc byte [sc_entry]
-    cmp byte [sc_entry], 16
-    jl sc_loop
-    
-    pop dx
-    pop bx
-    pop ax
-    ret
-
-; Variables for show_colors
-sc_base:    dw 0
-sc_entry:   db 0
-sc_color:   dw 0
-
-; ============================================================================
-; print_num - EXACT copy from working v1.3
-; ============================================================================
-print_num:
-    push ax
-    push dx
-    
-    xor ah, ah
-    mov dl, 10
-    div dl                  ; AL=tens, AH=ones
-    push ax
-    
-    add al, '0'
-    mov dl, al
-    mov ah, 0x02
-    int 0x21
-    
-    pop ax
-    mov al, ah
-    add al, '0'
-    mov dl, al
-    mov ah, 0x02
-    int 0x21
-    
-    pop dx
     pop ax
     ret
 
@@ -395,32 +786,53 @@ print_num:
 ; ============================================================================
 
 current_page:   db 0
+cursor_pos:     db 0
 palette_buffer: times 32 db 0
 
-cga_palette:
-    db 0x00, 0x00
-    db 0x00, 0x05
-    db 0x00, 0x50
-    db 0x00, 0x55
-    db 0x05, 0x00
-    db 0x05, 0x05
-    db 0x05, 0x20
-    db 0x05, 0x55
-    db 0x02, 0x22
-    db 0x02, 0x27
-    db 0x02, 0x72
-    db 0x02, 0x77
-    db 0x07, 0x22
-    db 0x07, 0x27
-    db 0x07, 0x70
-    db 0x07, 0x77
+grid_idx:       db 0
+grid_row:       db 0
+grid_col:       db 0
+cell_base:      dw 0
+cell_label_attr: db 0
+entry_color:    dw 0
+vram_attr:      db 0x07
 
-msg_banner: db 'PC1COLOR v1.6', 13, 10, '$'
-msg_page:   db 'Page $'
-msg_of32:   db '/32', 13, 10, '$'
-msg_r:      db ': R:$'
-msg_g:      db ' G:$'
-msg_b:      db ' B:$'
-msg_crlf:   db 13, 10, '$'
-msg_footer: db '-----', 13, 10, 'Space/Arrows:Page Q:Quit', 13, 10, '$'
-msg_bye:    db 'Bye!', 13, 10, '$'
+cga_palette:
+    db 0x00, 0x00       ; 0  Black
+    db 0x00, 0x05       ; 1  Blue
+    db 0x00, 0x50       ; 2  Green
+    db 0x00, 0x55       ; 3  Cyan
+    db 0x05, 0x00       ; 4  Red
+    db 0x05, 0x05       ; 5  Magenta
+    db 0x05, 0x20       ; 6  Brown
+    db 0x05, 0x55       ; 7  Light Gray
+    db 0x02, 0x22       ; 8  Dark Gray
+    db 0x02, 0x27       ; 9  Light Blue
+    db 0x02, 0x72       ; 10 Light Green
+    db 0x02, 0x77       ; 11 Light Cyan
+    db 0x07, 0x22       ; 12 Light Red
+    db 0x07, 0x27       ; 13 Light Magenta
+    db 0x07, 0x70       ; 14 Yellow
+    db 0x07, 0x77       ; 15 White
+
+hdr_title:  db 'PC1COLOR v2  Page ', 0
+hdr_of32:   db '/32', 0
+hdr_credit: db 'Created by Retro Erik 2026', 0
+
+det_color:  db 'Color: ', 0
+det_r:      db '  R:', 0
+det_g:      db ' G:', 0
+det_b:      db ' B:', 0
+
+msg_footer: db 'Arrows=Move  PgUp/Dn=Page  Home/End=Skip10  Q=Quit', 0
+
+bye_table:
+    dw bye_0, bye_1, bye_2, bye_3, bye_4, bye_5, bye_6, bye_7
+bye_0: db 'The Yamaha V6355D thanks you for your visit.', 13, 10, '$'
+bye_1: db 'So long, and thanks for all the colors.', 13, 10, '$'
+bye_2: db 'The answer to life, the universe and everything is 512...', 13, 10, '$'
+bye_3: db "DON'T PANIC. The palette has been restored.", 13, 10, '$'
+bye_4: db 'Time is an illusion. Color selection doubly so.', 13, 10, '$'
+bye_5: db 'Roger Wilco was here. He mopped up your palette.', 13, 10, '$'
+bye_6: db 'Larry looked at 512 colors. None of them were interested.', 13, 10, '$'
+bye_7: db "You can't do that. Oh wait, you just did. Goodbye!", 13, 10, '$'
