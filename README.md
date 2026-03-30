@@ -7,9 +7,18 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
 ![Olivetti Prodest PC1](https://img.shields.io/badge/Platform-Olivetti%20Prodest%20PC1-blue)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-green)
 
-### 📥 [Download PC1PAL.COM](PC1PAL.COM) — One-shot palette loader
-### 📥 [Download PC1PALT.COM](PC1PALT.COM) — TSR palette loader with live hotkeys
-### 📥 [Download pc1color.com](pc1color.com) — Color finder utility
+### 📥 [Download PC1-PAL.zip — all files in one package](PC1-PAL.zip)
+
+<details>
+<summary>Individual downloads</summary>
+
+- [PC1PAL.COM](PC1PAL.COM) — One-shot palette loader
+- [PC1PALT.COM](PC1PALT.COM) — TSR palette loader with live hotkeys
+- [pc1color.com](pc1color.com) — Color finder utility
+- [SUNSET.TXT](SUNSET.TXT) — Sunset color palette
+- [TANDY.TXT](TANDY.TXT) — Tandy color palette
+
+</details>
 
 ### ▶️ [Watch the video on YouTube](https://youtu.be/uqIDscWm9C0)
 
