@@ -360,7 +360,7 @@ Use any text editor to create a `.TXT` file:
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) file
+CC BY-NC 4.0 — See [LICENSE](LICENSE) file
 
 ## Author
 
