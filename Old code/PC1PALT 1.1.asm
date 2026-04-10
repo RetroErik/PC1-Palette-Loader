@@ -2,7 +2,7 @@
 ; PC1PALT.ASM - CGA Palette TSR for Olivetti Prodest PC1
 ; Written for NASM - NEC V40 (80186 compatible)
 ; By Retro Erik - 2026 using VS Code with GitHub Copilot
-; Version 1.2 - Jim Leonard optimizations + mono presets
+; Version 1.1 - TSR with Ctrl+Alt hotkeys
 ; ============================================================================
 ;
 ; Loads custom RGB palettes and programs the Yamaha V6355D DAC, then stays
@@ -12,32 +12,10 @@
 ; Palette TSR for VGA/EGA), adapted for the Olivetti Prodest PC1's V6355D
 ; Display Adapter Controller.
 ;
-; VERSION HISTORY:
-;   v1.2 - Applied Jim Leonard's code review optimizations:
-;          - All rep movsb on even-count copies replaced with rep movsw
-;            (half the iterations, ~2x faster per copy).
-;          - Resident hotkey handlers (hotkey_load_preset, hotkey_load_fallback)
-;            used manual byte-by-byte loops (mov al,[cs:si]/mov [cs:di],al/loop)
-;            — replaced with push cs/pop ds + rep movsw (~6x faster, matters
-;            in INT 09h ISR context).
-;          - Installer preset dispatch: 10-way CMP/JE chain + 10 repetitive
-;            handler blocks replaced with two data tables (.msg_table,
-;            .preset_table) and indexed lookup. ~40 lines eliminated.
-;          - check_switches digit parsing: 9 CMP/JEs for '1'..'9' replaced
-;            with range check + arithmetic (sub al,'1' / add al,3).
-;          - INT 09h hotkey CMP chain intentionally kept — scan codes are
-;            sparse across a 62-entry range; a jump table would waste 124
-;            bytes of resident memory for 10 entries.
-;          - Added /0 Mono Gray preset (Black, DarkGray, MedGray, White).
-;            Hotkey: Ctrl+Alt+0. Total presets now 10 (0-9).
-;   v1.1 - TSR with Ctrl+Alt hotkeys, random palettes, re-run support.
-;   v1.0 - Initial TSR version. INT 10h + INT 09h hooks.
-;   v0.9 - PC1PAL: one-shot palette loader (non-TSR ancestor).
-;
 ; FEATURES:
 ;   - TSR: hooks INT 10h to re-apply palette after CGA mode 4/5 resets
 ;   - Live hotkeys via INT 09h (Ctrl+Alt + key):
-;       0..9         Load preset palette 0-9
+;       1..9         Load preset palette 1-9
 ;       P            Toggle Pop (saturation + contrast boost)
 ;       R            Reset to default CGA palette
 ;       Up / Down    Brighten / Dim (+/-8 per step, max 3 steps)
@@ -52,10 +30,9 @@
 ;     /1  Arcade Vibrant     /2  Sierra Natural     /3  C64-inspired
 ;     /4  CGA Red/Green      /5  CGA Red/Blue       /6  Amstrad CPC
 ;     /7  Pastel             /8  Mono Amber          /9  Mono Green
-;     /0  Mono Gray
 ;
 ; COMMAND LINE:
-;   PC1PALT [file.txt] [/0..9] [/c:c1,c2,c3] [/b:color]
+;   PC1PALT [file.txt] [/1..9] [/c:c1,c2,c3] [/b:color]
 ;                       [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]
 ;
 ; HOW IT WORKS:
@@ -120,7 +97,6 @@ TEXT_BUF_SIZE       equ 1024
 ; --- Keyboard scan codes ---
 SCAN_1              equ 0x02
 SCAN_9              equ 0x0A
-SCAN_0              equ 0x0B        ; '0' key (after '9' in scan order)
 SCAN_P              equ 0x19
 SCAN_R              equ 0x13
 SCAN_UP             equ 0x48
@@ -204,8 +180,6 @@ res_preset_8:                       ; Monochrome Amber
     db 0,  0,  0,   21, 14,  0,   42, 28,  0,   63, 42,  0
 res_preset_9:                       ; Monochrome Green
     db 0,  0,  0,    0, 21,  0,    0, 42,  0,    0, 63,  0
-res_preset_0:                       ; Monochrome Gray
-    db 0,  0,  0,   21, 21, 21,   36, 36, 36,   63, 63, 63
 
 ; --- DAC entry -> user color index mapping (16 entries) ---
 color_to_dac:
@@ -385,13 +359,13 @@ tsr_int09:
     ; Ctrl+Alt held — check for our hotkeys
     mov ah, al                 ; save scan code in AH
 
-    ; Preset keys 1-9, 0
+    ; Preset keys 1-9
     cmp ah, SCAN_1
     jb .check_special
-    cmp ah, SCAN_0
+    cmp ah, SCAN_9
     ja .check_special
-    ; AH = 02h..0Bh -> preset 1..9, 0
-    sub ah, SCAN_1             ; AH = 0..9 = preset index
+    ; AH = 02h..0Ah -> preset 1..9
+    sub ah, SCAN_1             ; AH = 0..8 = preset index
     call .ack_keystroke        ; acknowledge BEFORE heavy processing
     call hotkey_load_preset
     jmp .swallow
@@ -532,8 +506,6 @@ hotkey_load_preset:
     push es
 
     push cs
-    pop ds
-    push cs
     pop es
 
     ; Calculate source: res_preset_1 + AH * 12
@@ -544,11 +516,15 @@ hotkey_load_preset:
     mov si, res_preset_1
     add si, ax
 
-    ; Copy 12 bytes to base_palette (6 words)
+    ; Copy 12 bytes to base_palette
     mov di, base_palette
-    mov cx, 6
-    cld
-    rep movsw
+    mov cx, 12
+.copy:
+    mov al, [cs:si]
+    mov [cs:di], al
+    inc si
+    inc di
+    loop .copy
 
     ; Reset adjustments
     mov byte [cs:adj_brightness], 0
@@ -570,15 +546,17 @@ hotkey_load_fallback:
     push es
 
     push cs
-    pop ds
-    push cs
     pop es
 
     mov si, res_preset_fallback
     mov di, base_palette
-    mov cx, 6
-    cld
-    rep movsw
+    mov cx, 12
+.copy:
+    mov al, [cs:si]
+    mov [cs:di], al
+    inc si
+    inc di
+    loop .copy
 
     mov byte [cs:adj_brightness], 0
     mov byte [cs:adj_vivid], 0
@@ -634,12 +612,12 @@ recompute_and_apply:
 
     mov byte [palette_active], 1
 
-    ; Step 1: Copy base_palette -> palette_rgb (6 words)
+    ; Step 1: Copy base_palette -> palette_rgb
     mov si, base_palette
     mov di, palette_rgb
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
 
     ; Step 2: Vivid adjustment (-3..+3 steps of saturation boost/mute)
     mov al, [adj_vivid]
@@ -812,12 +790,12 @@ res_restore_default:
     push cs
     pop es
 
-    ; Copy CGA defaults to palette_buffer (16 words)
+    ; Copy CGA defaults to palette_buffer
     mov si, cga_full_palette
     mov di, palette_buffer
-    mov cx, 16
+    mov cx, 32
     cld
-    rep movsw
+    rep movsb
 
     call res_write_palette_to_dac
 
@@ -1117,33 +1095,26 @@ main:
     cmp al, 1
     je .show_help
     cmp al, 2
-    jb .load_file
-    cmp al, 12
-    ja .load_file
-
-    ; AL=2..12: preset/reset dispatch via data tables
-    push ax
-    sub al, 2                  ; 2..12 -> 0..10
-    xor ah, ah
-    shl ax, 1                  ; word index
-    mov bx, ax
-    mov dx, [.msg_table + bx]
-    call print_string
-    mov si, [.preset_table + bx]
-    pop ax
-    cmp al, 2                  ; /R reset?
-    jne .apply_preset
-    mov byte [is_default_install], 1
-    jmp .apply_preset
-
-.msg_table:
-    dw msg_resetting
-    dw msg_preset1, msg_preset2, msg_preset3, msg_preset4, msg_preset5
-    dw msg_preset6, msg_preset7, msg_preset8, msg_preset9, msg_preset0
-.preset_table:
-    dw res_preset_fallback
-    dw res_preset_1, res_preset_2, res_preset_3, res_preset_4, res_preset_5
-    dw res_preset_6, res_preset_7, res_preset_8, res_preset_9, res_preset_0
+    je .do_reset_install
+    cmp al, 3
+    je .preset_1
+    cmp al, 4
+    je .preset_2
+    cmp al, 5
+    je .preset_3
+    cmp al, 6
+    je .preset_4
+    cmp al, 7
+    je .preset_5
+    cmp al, 8
+    je .preset_6
+    cmp al, 9
+    je .preset_7
+    cmp al, 10
+    je .preset_8
+    cmp al, 11
+    je .preset_9
+    jmp .load_file
 
 .show_help:
     mov dx, msg_help
@@ -1164,12 +1135,65 @@ main:
     call print_string
     jmp .exit_no_tsr
 
+.do_reset_install:
+    mov dx, msg_resetting
+    call print_string
+    mov si, res_preset_fallback
+    mov byte [is_default_install], 1
+    jmp .apply_preset
+
+.preset_1:
+    mov dx, msg_preset1
+    call print_string
+    mov si, res_preset_1
+    jmp .apply_preset
+.preset_2:
+    mov dx, msg_preset2
+    call print_string
+    mov si, res_preset_2
+    jmp .apply_preset
+.preset_3:
+    mov dx, msg_preset3
+    call print_string
+    mov si, res_preset_3
+    jmp .apply_preset
+.preset_4:
+    mov dx, msg_preset4
+    call print_string
+    mov si, res_preset_4
+    jmp .apply_preset
+.preset_5:
+    mov dx, msg_preset5
+    call print_string
+    mov si, res_preset_5
+    jmp .apply_preset
+.preset_6:
+    mov dx, msg_preset6
+    call print_string
+    mov si, res_preset_6
+    jmp .apply_preset
+.preset_7:
+    mov dx, msg_preset7
+    call print_string
+    mov si, res_preset_7
+    jmp .apply_preset
+.preset_8:
+    mov dx, msg_preset8
+    call print_string
+    mov si, res_preset_8
+    jmp .apply_preset
+.preset_9:
+    mov dx, msg_preset9
+    call print_string
+    mov si, res_preset_9
+    jmp .apply_preset
+
 .apply_preset:
-    ; Copy 12 bytes from preset to config_buffer (6 words)
+    ; Copy 12 bytes from preset to config_buffer
     mov di, config_buffer
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
     call apply_bg_override
     call apply_fg_override
     call apply_adjustments
@@ -1221,14 +1245,14 @@ main:
     ; Copy final config_buffer -> base_palette AND palette_rgb
     mov si, config_buffer
     mov di, base_palette
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
     mov si, config_buffer
     mov di, palette_rgb
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
 
     ; Reset adjustment state
     mov byte [adj_brightness], 0
@@ -1302,16 +1326,16 @@ main:
     pop ds
     mov si, base_palette
     mov di, base_palette
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
 
     ; Copy palette_rgb to resident
     mov si, palette_rgb
     mov di, palette_rgb
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
 
     ; Copy adjustments to resident
     mov al, [adj_brightness]
@@ -1337,9 +1361,8 @@ main:
     mov cl, 12
     mul cl
     mov cx, ax
-    shr cx, 1                  ; bytes -> words
     cld
-    rep movsw
+    rep movsb
     pop ds
 .no_preset_update:
 
@@ -1352,9 +1375,9 @@ main:
     pop ds
     mov si, res_preset_1
     mov di, res_preset_1
-    mov cx, 54                 ; 9 presets x 6 words each
+    mov cx, 9 * 12             ; 9 presets x 12 bytes each
     cld
-    rep movsw
+    rep movsb
     pop ds
     call res_restore_default
 .reload_done:
@@ -1576,21 +1599,25 @@ check_switches:
     je .is_pop
     cmp al, 'P'
     je .is_pop
-    ; '0' handled separately (not adjacent to '1'..'9' in ASCII)
-    cmp al, '0'
-    jne .not_zero
-    mov byte [switch_result], 12
-    jmp .after_modifier
-.not_zero:
-    ; Preset digits '1'..'9' -> switch_result 3..11 (computed)
     cmp al, '1'
-    jb .bad_switch
+    je .is_preset1
+    cmp al, '2'
+    je .is_preset2
+    cmp al, '3'
+    je .is_preset3
+    cmp al, '4'
+    je .is_preset4
+    cmp al, '5'
+    je .is_preset5
+    cmp al, '6'
+    je .is_preset6
+    cmp al, '7'
+    je .is_preset7
+    cmp al, '8'
+    je .is_preset8
     cmp al, '9'
-    ja .bad_switch
-    sub al, '1'               ; '1'..'9' -> 0..8
-    add al, 3                  ; -> 3..11
-    mov byte [switch_result], al
-    jmp .after_modifier
+    je .is_preset9
+    jmp .bad_switch
 
 .skip_token:
     lodsb
@@ -1663,6 +1690,24 @@ check_switches:
     jmp .sw_done
 .is_reset:    mov byte [switch_result], 2
     jmp .sw_done
+.is_preset1:  mov byte [switch_result], 3
+    jmp .after_modifier
+.is_preset2:  mov byte [switch_result], 4
+    jmp .after_modifier
+.is_preset3:  mov byte [switch_result], 5
+    jmp .after_modifier
+.is_preset4:  mov byte [switch_result], 6
+    jmp .after_modifier
+.is_preset5:  mov byte [switch_result], 7
+    jmp .after_modifier
+.is_preset6:  mov byte [switch_result], 8
+    jmp .after_modifier
+.is_preset7:  mov byte [switch_result], 9
+    jmp .after_modifier
+.is_preset8:  mov byte [switch_result], 10
+    jmp .after_modifier
+.is_preset9:  mov byte [switch_result], 11
+    jmp .after_modifier
 
 .bad_switch:
     mov dx, msg_bad_switch
@@ -2501,9 +2546,9 @@ load_fallback_to_config:
     push cx
     mov si, res_preset_fallback
     mov di, config_buffer
-    mov cx, CONFIG_SIZE / 2
+    mov cx, CONFIG_SIZE
     cld
-    rep movsw
+    rep movsb
     mov byte [palettes_loaded], 1
     pop cx
     pop di
@@ -2530,9 +2575,8 @@ copy_file_palettes_to_presets:
     mov cl, 12
     mul cl                      ; AX = palettes_loaded x 12
     mov cx, ax
-    shr cx, 1                   ; bytes -> words
     cld
-    rep movsw
+    rep movsb
 
 .cpy_done:
     pop di
@@ -2674,13 +2718,13 @@ print_string:
 ; ============================================================================
 
 msg_banner:
-    db 'PC1PalT v1.2 - CGA Palette TSR for Olivetti PC1', 13, 10
+    db 'PC1PalT v1.1 - CGA Palette TSR for Olivetti PC1', 13, 10
     db 'By Retro Erik - 2026 - Yamaha V6355D DAC Programmer', 13, 10
     db 'Type: PC1PALT /? for help', 13, 10, '$'
 
 msg_help:
     db 13, 10
-    db 'Usage: PC1PALT [file.txt] [/0..9] [/c:c1,c2,c3] [/b:color]', 13, 10
+    db 'Usage: PC1PALT [file.txt] [/1..9] [/c:c1,c2,c3] [/b:color]', 13, 10
     db '               [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]', 13, 10
     db 13, 10
     db '  Installs as TSR. Hooks INT 10h (survives game mode resets)', 13, 10
@@ -2695,9 +2739,6 @@ msg_help:
     db '  /R              Install with default CGA palette', 13, 10
     db '  /U              Uninstall TSR from memory', 13, 10
     db '  /?              Show this help', 13, 10
-    db 13, 10
-    db 'Text file: R,G,B per line (0-63). Up to 9 palettes (4 lines', 13, 10
-    db 'each). Multi-palette files overwrite presets 1-9.', 13, 10
     db '$'
 
 msg_pause:
@@ -2709,10 +2750,9 @@ msg_help2:
     db '  /1  Arcade Vibrant   /2  Sierra Natural   /3  C64-inspired', 13, 10
     db '  /4  CGA Red/Green    /5  CGA Red/Blue     /6  Amstrad CPC', 13, 10
     db '  /7  Pastel           /8  Mono Amber       /9  Mono Green', 13, 10
-    db '  /0  Mono Gray', 13, 10
     db 13, 10
     db 'Live hotkeys (hold Ctrl+Alt and press):', 13, 10
-    db '  0..9       Switch preset instantly', 13, 10
+    db '  1..9       Switch preset instantly', 13, 10
     db '  P          Toggle Pop (saturation + contrast)', 13, 10
     db '  R          Reset to default CGA palette', 13, 10
     db '  Up/Down    Brighten / Dim', 13, 10
@@ -2727,6 +2767,9 @@ msg_help2:
     db '  black, blue, green, cyan, red, magenta, brown, lightgray,', 13, 10
     db '  darkgray, lightblue, lightgreen, lightcyan, lightred,', 13, 10
     db '  lightmagenta, yellow, white', 13, 10
+    db 13, 10
+    db 'Text file: R,G,B per line (0-63). Up to 9 palettes (4 lines', 13, 10
+    db 'each). Multi-palette files overwrite presets 1-9.', 13, 10
     db '$'
 
 msg_preset1:     db 'Preset: Arcade Vibrant', 13, 10, '$'
@@ -2738,13 +2781,12 @@ msg_preset6:     db 'Preset: Amstrad CPC', 13, 10, '$'
 msg_preset7:     db 'Preset: Pastel', 13, 10, '$'
 msg_preset8:     db 'Preset: Monochrome Amber', 13, 10, '$'
 msg_preset9:     db 'Preset: Monochrome Green', 13, 10, '$'
-msg_preset0:     db 'Preset: Monochrome Gray', 13, 10, '$'
 msg_resetting:   db 'Using default CGA palette.', 13, 10, '$'
 msg_multi_loaded:
     db 'Multi-palette file: presets 1-9 overwritten.', 13, 10, '$'
 msg_installed:
     db 'TSR installed. INT 09h + INT 10h hooked.', 13, 10
-    db 'Ctrl+Alt + key = hotkeys (0-9/P/R/arrows/Space/C/A/Z).', 13, 10
+    db 'Ctrl+Alt + key = hotkeys (1-9/P/R/arrows/Space/C/A/Z).', 13, 10
     db 'Run your CGA game now. Use PC1PALT /U to uninstall.', 13, 10, '$'
 msg_already_loaded:
     db 'PC1PalT already resident - palette updated.', 13, 10, '$'

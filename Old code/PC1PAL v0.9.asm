@@ -2,7 +2,7 @@
 ; PC1PAL.ASM - CGA Palette Override Utility for Olivetti Prodest PC1
 ; Written for NASM - NEC V40 (80186 compatible)
 ; By Retro Erik - 2026 using VS Code with GitHub Copilot
-; Version 1.0
+; Version 0.9
 ; ============================================================================
 ; Loads custom RGB palette from text file and writes to V6355D DAC
 ;
@@ -14,19 +14,12 @@
 ; This utility writes your 4 custom colors to ALL these positions, so your
 ; palette works regardless of which CGA palette or intensity the game uses.
 ;
-; Usage: PC1PAL [palette.txt] [/0..9] [/R] [/?]
+; Usage: PC1PAL [palette.txt] [/1] [/2] [/3] [/R] [/?]
 ;
 ; Switches:
 ;   /1        Preset: Arcade Vibrant (action games)
 ;   /2        Preset: Sierra Natural (adventure games)
 ;   /3        Preset: C64-inspired (retro warm feel)
-;   /4        Preset: CGA Red/Green/White
-;   /5        Preset: CGA Red/Blue/White
-;   /6        Preset: Amstrad CPC
-;   /7        Preset: Pastel
-;   /8        Preset: Monochrome Amber
-;   /9        Preset: Monochrome Green
-;   /0        Preset: Monochrome Gray
 ;   /R        Reset to default CGA palette
 ;   /?        Show help
 ;
@@ -53,7 +46,6 @@
 
 [BITS 16]
 [ORG 0x100]
-CPU 186
 
 ; ============================================================================
 ; Constants
@@ -101,22 +93,10 @@ main:
     je .preset_2
     cmp al, 5                   ; /3 C64-inspired
     je .preset_3
-    cmp al, 6                   ; /4 CGA Red/Green
+    cmp al, 6                   ; /4 CGA Blue and Red 
     je .preset_4
-    cmp al, 7                   ; /5 CGA Red/Blue
+    cmp al, 7                   ; /5 CGA Blue and Green
     je .preset_5
-    cmp al, 8                   ; /6 Amstrad CPC
-    je .preset_6
-    cmp al, 9                   ; /7 Pastel
-    je .preset_7
-    cmp al, 10                  ; /8 Mono Amber
-    je .preset_8
-    cmp al, 11                  ; /9 Mono Green
-    je .preset_9
-    cmp al, 12                  ; /0 Mono Gray
-    jne .no_preset
-    jmp .preset_0
-.no_preset:
     
     ; Normal operation: load palette file
     jmp .load_palette
@@ -163,36 +143,6 @@ main:
     mov dx, msg_preset5
     call print_string
     mov si, preset_cga_palette
-    jmp .apply_preset
-
-.preset_6:
-    mov dx, msg_preset6
-    call print_string
-    mov si, preset_amstrad_cpc
-    jmp .apply_preset
-
-.preset_7:
-    mov dx, msg_preset7
-    call print_string
-    mov si, preset_pastel
-    jmp .apply_preset
-
-.preset_8:
-    mov dx, msg_preset8
-    call print_string
-    mov si, preset_mono_amber
-    jmp .apply_preset
-
-.preset_9:
-    mov dx, msg_preset9
-    call print_string
-    mov si, preset_mono_green
-    jmp .apply_preset
-
-.preset_0:
-    mov dx, msg_preset0
-    call print_string
-    mov si, preset_mono_gray
     jmp .apply_preset
 
 .apply_preset:
@@ -634,7 +584,7 @@ check_switches:
     je .is_help
     cmp al, 'h'
     je .is_help
-    ; Check for preset numbers 0-9
+    ; Check for preset numbers 1, 2, 3, 4, 5
     cmp al, '1'
     je .is_preset1
     cmp al, '2'
@@ -645,16 +595,6 @@ check_switches:
     je .is_preset4
     cmp al, '5'
     je .is_preset5
-    cmp al, '6'
-    je .is_preset6
-    cmp al, '7'
-    je .is_preset7
-    cmp al, '8'
-    je .is_preset8
-    cmp al, '9'
-    je .is_preset9
-    cmp al, '0'
-    je .is_preset0
     jmp .no_switch
 
 .is_help:
@@ -683,26 +623,6 @@ check_switches:
 
 .is_preset5:
     mov al, 7
-    jmp .switch_done
-
-.is_preset6:
-    mov al, 8
-    jmp .switch_done
-
-.is_preset7:
-    mov al, 9
-    jmp .switch_done
-
-.is_preset8:
-    mov al, 10
-    jmp .switch_done
-
-.is_preset9:
-    mov al, 11
-    jmp .switch_done
-
-.is_preset0:
-    mov al, 12
     jmp .switch_done
 
 .no_switch:
@@ -1071,23 +991,24 @@ print_string:
 ; ============================================================================
 
 msg_banner:
-    db 'PC1PAL v1.0 - CGA Palette Loader for Olivetti PC1', 13, 10
+    db 'PC1PAL v0.9 - CGA Palette Loader for Olivetti PC1', 13, 10
     db 'By Retro Erik - 2026 - Yamaha V6355D DAC Programmer', 13, 10
     db 'Type: PC1PAL /? for help', 13, 10, '$'
 
 msg_help:
     db 13, 10
-    db 'Usage: PC1PAL [file.txt] [/0..9] [/R] [/?]', 13, 10
+    db 'Usage: PC1PAL [file.txt] [/1] [/2] [/3] [/4] [/5] [/R] [/?]', 13, 10
     db 13, 10
     db '  file.txt  Load palette from text file (default: PC1PAL.TXT)', 13, 10
     db '  /R        Reset to default CGA palette', 13, 10
     db '  /?        Show this help', 13, 10
     db 13, 10
     db 'Built-in presets (RGB values 0-63):', 13, 10
-    db '  /1  Arcade Vibrant  /2  Sierra Natural  /3  C64-inspired', 13, 10
-    db '  /4  CGA Red/Green   /5  CGA Red/Blue    /6  Amstrad CPC', 13, 10
-    db '  /7  Pastel          /8  Mono Amber      /9  Mono Green', 13, 10
-    db '  /0  Mono Gray', 13, 10
+    db '  /1  Arcade Vibrant - Black, Blue(9,27,63), Red(63,9,9), Skin(63,45,27)', 13, 10
+    db '  /2  Sierra Natural - Black, Teal(9,36,36), Brown(36,18,9), Skin(63,45,36)', 13, 10
+    db '  /3  C64-inspired   - Black, Blue(18,27,63), Orange(54,27,9), Skin(63,54,36)', 13, 10
+    db '  /4  CGA-inspired 1 - Black, Red(63,9,9), Green(9,63,9), White(63,63,63)', 13, 10
+    db '  /5  CGA-inspired 2 - Black, Red(63,0,0), Blue(0,0,63), White(63,63,63)', 13, 10
     db 13, 10
     db 'Text file format (one line per color, values 0-63):', 13, 10
     db '  R,G,B     or  R G B', 13, 10
@@ -1104,25 +1025,10 @@ msg_preset3:
     db 'Loading preset: C64-inspired', 13, 10, '$'
 
 msg_preset4:
-    db 'Loading preset: CGA Red/Green', 13, 10, '$'
+    db 'Loading preset: CGA-inspired 1', 13, 10, '$'
 
 msg_preset5:
-    db 'Loading preset: CGA Red/Blue', 13, 10, '$'
-
-msg_preset6:
-    db 'Loading preset: Amstrad CPC', 13, 10, '$'
-
-msg_preset7:
-    db 'Loading preset: Pastel', 13, 10, '$'
-
-msg_preset8:
-    db 'Loading preset: Mono Amber', 13, 10, '$'
-
-msg_preset9:
-    db 'Loading preset: Mono Green', 13, 10, '$'
-
-msg_preset0:
-    db 'Loading preset: Mono Gray', 13, 10, '$'
+    db 'Loading preset: CGA-inspired 2', 13, 10, '$'
 
 msg_resetting:
     db 'Resetting to default CGA palette...', 13, 10, '$'
@@ -1220,41 +1126,6 @@ preset_cga_palette:
     db 63, 0, 0                 ; 1: Red (7,0,0)
     db 0, 0, 63                 ; 2: Blue (0,0,7)
     db 63, 63, 63               ; 3: White (7,7,7)
-
-; Preset 6: Amstrad CPC - Teal/Olive/White
-preset_amstrad_cpc:
-    db 0, 0, 0                  ; 0: Black
-    db 0, 42, 42                ; 1: Teal
-    db 42, 42, 0                ; 2: Olive
-    db 63, 63, 63               ; 3: White
-
-; Preset 7: Pastel - Soft tones
-preset_pastel:
-    db 0, 0, 0                  ; 0: Black
-    db 27, 36, 63               ; 1: Sky Blue
-    db 63, 36, 45               ; 2: Pink
-    db 54, 54, 63               ; 3: Lavender
-
-; Preset 8: Monochrome Amber
-preset_mono_amber:
-    db 0, 0, 0                  ; 0: Black
-    db 21, 14, 0                ; 1: Dark Amber
-    db 42, 28, 0                ; 2: Amber
-    db 63, 42, 0                ; 3: Bright Amber
-
-; Preset 9: Monochrome Green
-preset_mono_green:
-    db 0, 0, 0                  ; 0: Black
-    db 0, 21, 0                 ; 1: Dark Green
-    db 0, 42, 0                 ; 2: Green
-    db 0, 63, 0                 ; 3: Bright Green
-
-; Preset 0: Monochrome Gray
-preset_mono_gray:
-    db 0, 0, 0                  ; 0: Black
-    db 21, 21, 21               ; 1: Dark Gray
-    db 36, 36, 36               ; 2: Medium Gray
-    db 63, 63, 63               ; 3: White
 
 file_handle: dw 0
 bytes_read:  dw 0

@@ -30,7 +30,7 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
 | **Resident memory** | None | ~4 KB |
 | **Survives game mode resets** | No | Yes (INT 10h hook) |
 | **Live hotkey adjustment** | No | Yes (Ctrl+Alt + key) |
-| **Presets** | 3 | 9 + random generation |
+| **Presets** | 10 | 10 + random generation |
 | **Color-by-name switches** | No | Yes (/b: and /c:) |
 | **Brightness / Saturation** | No | Yes (live adjustment) |
 | **Game compatibility** | Best | Most games (see below) |
@@ -43,7 +43,7 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
 
 - **TSR:** Hooks INT 10h to automatically re-apply the palette after CGA mode resets
 - **Live hotkeys** via INT 09h (hold Ctrl+Alt and press):
-  - **1–9** — Switch between 9 preset palettes instantly
+  - **0–9** — Switch between 10 preset palettes instantly
   - **P** — Toggle Pop (saturation + contrast boost)
   - **R** — Reset to default CGA palette
   - **Up / Down** — Brighten / Dim (3 steps each)
@@ -52,7 +52,7 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
   - **C** — Random palette from 15 C64 colors
   - **A** — Random palette from 26 Amstrad CPC colors
   - **Z** — Random palette from 14 ZX Spectrum colors
-- **9 built-in presets:** Arcade Vibrant, Sierra Natural, C64-inspired, CGA Red/Green, CGA Red/Blue, Amstrad CPC, Pastel, Mono Amber, Mono Green
+- **10 built-in presets:** Arcade Vibrant, Sierra Natural, C64-inspired, CGA Red/Green, CGA Red/Blue, Amstrad CPC, Pastel, Mono Amber, Mono Green, Mono Gray
 - **Multi-palette files:** Load up to 9 palettes from one file, accessible via hotkeys 1–9
 - **Color-by-name switches:** `/b:darkgray` `/c:lightblue,red,yellow`
 - **Brightness, saturation, and pop adjustments** from command line
@@ -62,14 +62,14 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
 ### Usage
 
 ```
-PC1PALT [file.txt] [/1..9] [/c:c1,c2,c3] [/b:color]
+PC1PALT [file.txt] [/0..9] [/c:c1,c2,c3] [/b:color]
                     [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `file.txt` | Load palette from text file (default: PC1PALT.TXT) |
-| `/1`..`/9` | Load built-in preset palette |
+| `/0`..`/9` | Load built-in preset palette |
 | `/c:c1,c2,c3` | Set colors 1–3 by name |
 | `/b:color` | Set background color by name |
 | `/P` | Pop — boost saturation + contrast |
@@ -86,10 +86,10 @@ C:\GAMES> PC1PALT /1
 PC1PalT v1.1 - CGA Palette TSR for Olivetti PC1
 Preset: Arcade Vibrant
 TSR installed. INT 09h + INT 10h hooked.
-Ctrl+Alt + key = hotkeys (1-9/P/R/arrows/Space/C/A/Z).
+Ctrl+Alt + key = hotkeys (0-9/P/R/arrows/Space/C/A/Z).
 
 C:\GAMES> LODERUN.EXE
-(now use Ctrl+Alt+2 to switch to Sierra Natural, Ctrl+Alt+Up to brighten, etc.)
+(now use Ctrl+Alt+2 to switch to Sierra Natural, Ctrl+Alt+0 for grayscale, etc.)
 ```
 
 ```
@@ -114,6 +114,7 @@ PC1PalT uninstalled. INT 09h + INT 10h restored.
 | `/7` | Pastel | Black, SkyBlue(27,36,63), Pink(63,36,45), Lavender(54,54,63) |
 | `/8` | Mono Amber | Black, DarkAmber(21,14,0), Amber(42,28,0), BrightAmber(63,42,0) |
 | `/9` | Mono Green | Black, DarkGreen(0,21,0), Green(0,42,0), BrightGreen(0,63,0) |
+| `/0` | Mono Gray | Black, DarkGray(21,21,21), MedGray(36,36,36), White |
 
 ### Color Names (for /b: and /c:)
 
@@ -126,15 +127,13 @@ The original non-TSR loader. Sets the palette once and exits — no resident cod
 ### Usage
 
 ```
-PC1PAL [file.txt] [/1] [/2] [/3] [/R] [/?]
+PC1PAL [file.txt] [/0..9] [/R] [/?]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `file.txt` | Load palette from text file (default: PC1PAL.TXT) |
-| `/1` | Preset: Arcade Vibrant |
-| `/2` | Preset: Sierra Natural |
-| `/3` | Preset: C64-inspired |
+| `/0`..`/9` | Load built-in preset palette |
 | `/R` | Reset to default CGA palette |
 | `/?` | Show help |
 
@@ -357,6 +356,14 @@ Use any text editor to create a `.TXT` file:
 63,0,63     ; Color 2 (replaces Magenta)
 63,63,63    ; Color 3 (replaces White)
 ```
+
+## Version History
+
+| Version | Changes |
+|---------|----------|
+| **1.2** | Jim Leonard optimizations: all `rep movsb` on even counts → `rep movsw` (~2× faster per copy); resident hotkey byte loops → `rep movsw` (~6× faster in ISR context); installer preset dispatch CMP/JE chain → data table lookup (40 lines eliminated); digit parsing CMP chain → range check + arithmetic. Added `/0` Mono Gray preset (hotkey Ctrl+Alt+0). |
+| **1.1** | TSR with Ctrl+Alt hotkeys, random palettes (CGA/C64/CPC/ZX), brightness/saturation/pop adjustments, re-run support, uninstall. |
+| **1.0** | Initial TSR version. INT 10h + INT 09h hooks. |
 
 ## License
 
