@@ -1,10 +1,14 @@
-# PC1PAL & PC1PALT - CGA Palette Loaders for Olivetti Prodest PC1
+# PC1PAL, PC1PALT & ACVPALT - CGA Palette Loaders
 
-DOS utilities that load custom RGB palettes for CGA games on the Olivetti Prodest PC1. The PC1 uses the Yamaha V6355D video chip with a programmable 16-entry RGB DAC, enabling true RGB color replacement for CGA games.
+DOS utilities that load custom RGB palettes for CGA games on the Olivetti
+Prodest PC1 and ACV-1030. Both platforms use the Yamaha V6355-family video
+chip with a programmable 16-entry RGB DAC, enabling true RGB color replacement
+for CGA games on composite output.
 
 By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube.com/@RetroErik)
 
 ![Olivetti Prodest PC1](https://img.shields.io/badge/Platform-Olivetti%20Prodest%20PC1-blue)
+![Platform](https://img.shields.io/badge/Platform-ACV--1030-blue)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-green)
 
 ### 📥 [Download PC1-PAL.zip — all files in one package](PC1-PAL.zip)
@@ -14,6 +18,7 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
 
 - [PC1PAL.COM](PC1PAL.COM) — One-shot palette loader
 - [PC1PALT.COM](PC1PALT.COM) — TSR palette loader with live hotkeys
+- [ACVPALT.COM](ACVPALT.COM) — ACV-1030 TSR palette loader for a 12 MHz 80286
 - [pc1color.com](pc1color.com) — Color finder utility
 - [SUNSET.TXT](SUNSET.TXT) — Sunset color palette
 - [TANDY.TXT](TANDY.TXT) — Tandy color palette
@@ -36,6 +41,39 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
 | **Game compatibility** | Best | Most games (see below) |
 
 **Recommendation:** Use **PC1PALT** for most games. Use **PC1PAL** for games that are incompatible with TSR palette loaders (see [Tested Games](#tested-games)).
+
+## ACVPALT — ACV-1030 TSR Palette Loader
+
+ACVPALT is the ACV-1030 port of PC1PALT for a 12 MHz Intel 80286 with an
+ACV-1030 V6355 video card. It preserves the TSR behavior, live Ctrl+Alt
+hotkeys, palette presets, palette-file support, and INT 10h/INT 09h hooks.
+The original PC1PALT source remains unchanged for Olivetti Prodest PC1 use.
+
+### Usage
+
+```
+ACVPALT [file.txt] [/0..9] [/c:c1,c2,c3] [/b:color]
+                     [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]
+```
+
+Use `ACVPALT /U` to uninstall the resident ACVPalT TSR. The default palette
+file name is `ACVPALT.TXT`.
+
+### ACV-1030 Hardware Validation
+
+Validated on 2026-08-15 with a 12 MHz 80286 and ACV-1030 hardware:
+
+1. Ordinary CGA games on CGA/TTL: fixed IRGB colors.
+2. Ordinary CGA games on composite: custom ACVPALT palette colors visible.
+3. Composite-mode games on composite: custom ACVPALT palette colors visible.
+
+The ACVPALT package includes [ACVPALT-TEST-PLAN.md](ACVPALT-TEST-PLAN.md),
+which documents the hardware checks and ACV-1030 register requirements.
+
+<p>
+<em>Planet X3 — ACVPALT random palette on composite output</em><br>
+<img src="Screenshots/ACVPALT%20on%20PX3%20-%20Random%20Color%20from%20Coposite%20out.png" width="60%" alt="Planet X3 with an ACVPALT random palette on composite output">
+</p>
 
 ## PC1PALT — TSR Palette Loader (recommended)
 
